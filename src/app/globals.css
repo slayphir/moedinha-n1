@@ -2,26 +2,199 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@media (prefers-color-scheme: dark) {
+@layer base {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    /* Base */
+    --paper: 244 251 243;
+    --surface: 255 255 255;
+    --stroke: 226 235 225;
+    --ink: 23 21 19;
+
+    /* Vault */
+    --vault-950: 4 61 46;
+    --vault-900: 12 47 29;
+    --vault-700: 41 80 51;
+
+    /* Coin */
+    --coin: 241 195 30;
+    --bronze: 130 82 25;
+
+    /* Semantics */
+    --good: 36 128 78;
+    --bad: 197 71 58;
+
+    /* App tokens */
+    --background: var(--paper);
+    --foreground: var(--ink);
+
+    --card: var(--surface);
+    --card-foreground: var(--ink);
+
+    --popover: var(--surface);
+    --popover-foreground: var(--ink);
+
+    --primary: var(--vault-700);
+    --primary-foreground: var(--paper);
+
+    --secondary: 235 243 234;
+    --secondary-foreground: 33 53 40;
+
+    --muted: 238 245 236;
+    --muted-foreground: 92 101 91;
+
+    --accent: var(--coin);
+    --accent-foreground: var(--ink);
+
+    --destructive: var(--bad);
+    --destructive-foreground: 255 255 255;
+
+    --border: var(--stroke);
+    --border-component: 149 138 116;
+    --input: var(--border-component);
+    --ring: 161 120 20;
+    --input-ring: 161 120 20;
+
+    --radius: 1rem;
+  }
+
+  .dark,
+  [data-theme="dark"] {
+    --paper: 15 19 23;
+    --surface: 22 28 34;
+    --stroke: 44 54 66;
+    --ink: 238 242 247;
+
+    --vault-950: 5 44 34;
+    --vault-900: 10 57 44;
+    --vault-700: 44 110 71;
+
+    --coin: 225 183 53;
+    --bronze: 147 100 47;
+
+    --good: 57 161 110;
+    --bad: 217 96 84;
+
+    --background: var(--paper);
+    --foreground: var(--ink);
+
+    --card: var(--surface);
+    --card-foreground: var(--ink);
+
+    --popover: var(--surface);
+    --popover-foreground: var(--ink);
+
+    --primary: var(--good);
+    --primary-foreground: 12 23 16;
+
+    --secondary: 31 41 49;
+    --secondary-foreground: 216 228 238;
+
+    --muted: 28 36 44;
+    --muted-foreground: 150 165 176;
+
+    --accent: var(--coin);
+    --accent-foreground: 15 19 23;
+
+    --destructive: var(--bad);
+    --destructive-foreground: 255 255 255;
+
+    --border: var(--stroke);
+    --border-component: 110 122 136;
+    --input: var(--border-component);
+    --ring: var(--coin);
+    --input-ring: var(--coin);
   }
 }
 
-body {
-  color: var(--foreground);
-  background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
-}
+@layer base {
+  * {
+    @apply border-border;
+  }
 
-@layer utilities {
-  .text-balance {
-    text-wrap: balance;
+  html,
+  body {
+    min-height: 100%;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: var(--font-body), "Segoe UI", sans-serif;
+    background-image:
+      radial-gradient(circle at 12% -8%, rgb(241 195 30 / 0.14) 0%, transparent 46%),
+      radial-gradient(circle at 98% 0%, rgb(41 80 51 / 0.12) 0%, transparent 40%),
+      linear-gradient(160deg, rgb(var(--paper)) 0%, rgb(252 251 248) 52%, rgb(241 246 239) 100%);
+    background-attachment: fixed;
+  }
+
+  h1,
+  h2,
+  h3,
+  .font-display {
+    font-family: var(--font-display), "Palatino Linotype", serif;
+    letter-spacing: 0.01em;
   }
 }
+
+::selection {
+  background: rgb(var(--coin) / 0.6);
+  color: rgb(var(--ink));
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgb(var(--background));
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgb(var(--vault-700) / 0.5);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(var(--vault-700) / 0.75);
+}
+
+/* ── Stagger delays for card entrance ── */
+.stagger-1 { animation-delay: 0ms; }
+.stagger-2 { animation-delay: 60ms; }
+.stagger-3 { animation-delay: 120ms; }
+.stagger-4 { animation-delay: 180ms; }
+.stagger-5 { animation-delay: 240ms; }
+.stagger-6 { animation-delay: 300ms; }
+
+/* ── Coin shimmer effect ── */
+.coin-shimmer {
+  background: linear-gradient(
+    110deg,
+    rgb(var(--coin)) 0%,
+    rgb(var(--coin) / 0.7) 40%,
+    rgb(255 255 255 / 0.3) 50%,
+    rgb(var(--coin) / 0.7) 60%,
+    rgb(var(--coin)) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 2.5s ease-in-out infinite;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ── Dark mode animated aurora background ── */
+.dark body,
+[data-theme="dark"] body {
+  background-image:
+    radial-gradient(circle at 15% 10%, rgb(57 161 110 / 0.08) 0%, transparent 50%),
+    radial-gradient(circle at 85% 20%, rgb(225 183 53 / 0.06) 0%, transparent 45%),
+    radial-gradient(circle at 50% 80%, rgb(44 110 71 / 0.06) 0%, transparent 50%);
+  background-size: 200% 200%;
+  animation: gradientShift 20s ease infinite;
+}
+
+/* ── Smooth progress bar fill ── */
+.progress-animated {
+  animation: progressFill 1s ease-out both;
+}
+
