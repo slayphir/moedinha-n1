@@ -22,7 +22,7 @@ export default async function OnboardingPage() {
         <p className="text-muted-foreground">
           Crie sua primeira organização (workspace) para começar.
         </p>
-        <CreateOrgForm userId={user.id} />
+        <CreateOrgForm />
       </div>
     </div>
   );

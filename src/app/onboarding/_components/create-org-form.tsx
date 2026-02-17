@@ -1,17 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { createOrganization } from "@/app/actions/create-org";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-
-type PostgrestLikeError = {
-  code?: string;
-  message?: string;
-  details?: string;
-  hint?: string;
-};
 
 function toSlug(value: string): string {
   return value
@@ -24,35 +17,7 @@ function toSlug(value: string): string {
     .replace(/-+/g, "-");
 }
 
-function formatSubmitError(error: unknown): string {
-  if (error instanceof Error) return error.message;
-
-  const maybePg = error as PostgrestLikeError | null;
-  const code = maybePg?.code;
-  const message = maybePg?.message;
-
-  if (code === "42501") {
-    return "Permissao negada no banco (RLS). Aplique as migrations de politicas (00002 e 00005) no Supabase.";
-  }
-
-  if (code === "42883") {
-    return "Funcao de seguranca ausente no banco. Rode as migrations 00001/00002 atualizadas.";
-  }
-
-  if (code === "42P01") {
-    return "Tabela ausente no banco. Rode as migrations iniciais do Supabase.";
-  }
-
-  if (message) {
-    const detail = maybePg?.details ? ` Detalhe: ${maybePg.details}` : "";
-    const hint = maybePg?.hint ? ` Dica: ${maybePg.hint}` : "";
-    return `${message}${detail}${hint}`;
-  }
-
-  return "Erro ao criar organizacao";
-}
-
-export function CreateOrgForm({ userId }: { userId: string }) {
+export function CreateOrgForm() {
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [loading, setLoading] = useState(false);
@@ -76,63 +41,18 @@ export function CreateOrgForm({ userId }: { userId: string }) {
 
     setLoading(true);
     setMessage(null);
-    const supabase = createClient();
 
-    try {
-      const normalizedSlug = toSlug(slug || cleanName) || `org-${Date.now().toString(36)}`;
+    const result = await createOrganization({ name: cleanName, slug: slug || undefined });
 
-      const { data: org, error: orgError } = await supabase
-        .from("orgs")
-        .insert({
-          name: cleanName,
-          slug: normalizedSlug,
-        })
-        .select("id")
-        .single();
+    setLoading(false);
 
-      if (orgError) {
-        if (orgError.code === "23505") {
-          throw new Error("Slug ja existe. Tente um nome diferente para a URL.");
-        }
-        throw orgError;
-      }
-
-      const { error: memberError } = await supabase.from("org_members").insert({
-        org_id: org.id,
-        user_id: userId,
-        role: "admin",
-      });
-
-      if (memberError) {
-        if (memberError.code === "42501") {
-          throw new Error(
-            "Permissao insuficiente para vincular o primeiro membro. Rode a migration 00005_org_bootstrap_policy.sql."
-          );
-        }
-        throw memberError;
-      }
-
-      await supabase.from("accounts").insert({
-        org_id: org.id,
-        name: "Conta Principal",
-        type: "bank",
-        currency: "BRL",
-        initial_balance: 0,
-      });
-
-      await supabase.from("categories").insert([
-        { org_id: org.id, name: "Salario", type: "income" },
-        { org_id: org.id, name: "Alimentacao", type: "expense" },
-        { org_id: org.id, name: "Moradia", type: "expense" },
-      ]);
-
-      setMessage({ type: "success", text: "Organizacao criada. Redirecionando..." });
-      window.location.href = "/dashboard";
-    } catch (error) {
-      setMessage({ type: "error", text: formatSubmitError(error) });
-    } finally {
-      setLoading(false);
+    if (result.error) {
+      setMessage({ type: "error", text: result.error });
+      return;
     }
+
+    setMessage({ type: "success", text: "Organizacao criada. Redirecionando..." });
+    window.location.href = "/dashboard";
   }
 
   return (
