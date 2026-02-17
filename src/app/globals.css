@@ -158,23 +158,38 @@
 }
 
 /* ── Stagger delays for card entrance ── */
-.stagger-1 { animation-delay: 0ms; }
-.stagger-2 { animation-delay: 60ms; }
-.stagger-3 { animation-delay: 120ms; }
-.stagger-4 { animation-delay: 180ms; }
-.stagger-5 { animation-delay: 240ms; }
-.stagger-6 { animation-delay: 300ms; }
+.stagger-1 {
+  animation-delay: 0ms;
+}
+
+.stagger-2 {
+  animation-delay: 60ms;
+}
+
+.stagger-3 {
+  animation-delay: 120ms;
+}
+
+.stagger-4 {
+  animation-delay: 180ms;
+}
+
+.stagger-5 {
+  animation-delay: 240ms;
+}
+
+.stagger-6 {
+  animation-delay: 300ms;
+}
 
 /* ── Coin shimmer effect ── */
 .coin-shimmer {
-  background: linear-gradient(
-    110deg,
-    rgb(var(--coin)) 0%,
-    rgb(var(--coin) / 0.7) 40%,
-    rgb(255 255 255 / 0.3) 50%,
-    rgb(var(--coin) / 0.7) 60%,
-    rgb(var(--coin)) 100%
-  );
+  background: linear-gradient(110deg,
+      rgb(var(--coin)) 0%,
+      rgb(var(--coin) / 0.7) 40%,
+      rgb(255 255 255 / 0.3) 50%,
+      rgb(var(--coin) / 0.7) 60%,
+      rgb(var(--coin)) 100%);
   background-size: 200% 100%;
   animation: shimmer 2.5s ease-in-out infinite;
   -webkit-background-clip: text;
@@ -198,3 +213,18 @@
   animation: progressFill 1s ease-out both;
 }
 
+/* ── iOS Safe Area ── */
+.safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* ── Mobile touch improvements ── */
+@media (pointer: coarse) {
+
+  button,
+  a,
+  [role="button"] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}

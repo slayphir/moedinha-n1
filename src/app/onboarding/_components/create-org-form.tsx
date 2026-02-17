@@ -6,6 +6,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
+type PostgrestLikeError = {
+  code?: string;
+  message?: string;
+  details?: string;
+  hint?: string;
+};
+
 function toSlug(value: string): string {
   return value
     .normalize("NFD")
@@ -15,6 +22,34 @@ function toSlug(value: string): string {
     .replace(/[^a-z0-9\s-]/g, "")
     .replace(/\s+/g, "-")
     .replace(/-+/g, "-");
+}
+
+function formatSubmitError(error: unknown): string {
+  if (error instanceof Error) return error.message;
+
+  const maybePg = error as PostgrestLikeError | null;
+  const code = maybePg?.code;
+  const message = maybePg?.message;
+
+  if (code === "42501") {
+    return "Permissao negada no banco (RLS). Aplique as migrations de politicas (00002 e 00005) no Supabase.";
+  }
+
+  if (code === "42883") {
+    return "Funcao de seguranca ausente no banco. Rode as migrations 00001/00002 atualizadas.";
+  }
+
+  if (code === "42P01") {
+    return "Tabela ausente no banco. Rode as migrations iniciais do Supabase.";
+  }
+
+  if (message) {
+    const detail = maybePg?.details ? ` Detalhe: ${maybePg.details}` : "";
+    const hint = maybePg?.hint ? ` Dica: ${maybePg.hint}` : "";
+    return `${message}${detail}${hint}`;
+  }
+
+  return "Erro ao criar organizacao";
 }
 
 export function CreateOrgForm({ userId }: { userId: string }) {
@@ -94,8 +129,7 @@ export function CreateOrgForm({ userId }: { userId: string }) {
       setMessage({ type: "success", text: "Organizacao criada. Redirecionando..." });
       window.location.href = "/dashboard";
     } catch (error) {
-      const text = error instanceof Error ? error.message : "Erro ao criar organizacao";
-      setMessage({ type: "error", text });
+      setMessage({ type: "error", text: formatSubmitError(error) });
     } finally {
       setLoading(false);
     }

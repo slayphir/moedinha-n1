@@ -65,11 +65,21 @@ export function DashboardShell({
     },
   ];
 
+  // Mobile bottom nav — only essential items
+  const mobileNavItems = [
+    { href: "/dashboard", label: "Início", icon: LayoutDashboard },
+    { href: "/dashboard/lancamentos", label: "Lançamentos", icon: List },
+    { href: "/dashboard/distribuicao", label: "Distribuição", icon: Percent },
+    { href: "/dashboard/metas", label: "Metas", icon: Target },
+  ];
+
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
   return (
     <div className="flex min-h-screen flex-col md:flex-row">
-      <aside className="fixed bottom-0 left-0 right-0 z-40 border-t border-stroke bg-gradient-to-b from-vault-950 to-vault-900 text-paper md:sticky md:top-0 md:bottom-auto md:z-auto md:w-64 md:border-r md:border-t-0 md:h-screen md:overflow-y-auto">
-        <div className="flex h-14 items-center gap-2 border-b border-paper/20 px-4 md:flex-none">
-          <Menu className="h-5 w-5 md:hidden" />
+      {/* ── Desktop Sidebar (hidden on mobile) ── */}
+      <aside className="hidden md:sticky md:top-0 md:flex md:w-64 md:flex-col md:border-r md:border-stroke md:h-screen md:overflow-y-auto bg-gradient-to-b from-vault-950 to-vault-900 text-paper">
+        <div className="flex h-14 items-center gap-2 border-b border-paper/20 px-4">
           <Link href="/dashboard" className="flex items-center gap-2 font-semibold text-coin">
             <Coins className="h-4 w-4 animate-coin-spin" />
             <span className="font-display text-lg coin-shimmer">Moedinha Nº1</span>
@@ -95,30 +105,28 @@ export function DashboardShell({
 
               {(section.collapsible ? configOpen : true) && (
                 <div className="flex flex-col gap-1">
-                  {section.items.map((item) => {
-                    return (
-                      <Link
-                        key={item.label}
-                        href={item.href}
-                        className={cn(
-                          "flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-all duration-200",
-                          pathname === item.href.split("?")[0] && (!item.href.includes("tab=") || (typeof window !== 'undefined' && window.location.search.includes(item.href.split("?")[1])))
-                            ? "bg-coin/10 font-medium text-coin border-l-2 border-coin animate-pulse-glow"
-                            : "text-paper/80 hover:bg-vault-800 hover:text-paper hover:translate-x-1 border-l-2 border-transparent"
-                        )}
-                      >
-                        <item.icon className="h-4 w-4" />
-                        {item.label}
-                      </Link>
-                    );
-                  })}
+                  {section.items.map((item) => (
+                    <Link
+                      key={item.label}
+                      href={item.href}
+                      className={cn(
+                        "flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-all duration-200",
+                        pathname === item.href.split("?")[0] && (!item.href.includes("tab=") || (typeof window !== 'undefined' && window.location.search.includes(item.href.split("?")[1])))
+                          ? "bg-coin/10 font-medium text-coin border-l-2 border-coin animate-pulse-glow"
+                          : "text-paper/80 hover:bg-vault-800 hover:text-paper hover:translate-x-1 border-l-2 border-transparent"
+                      )}
+                    >
+                      <item.icon className="h-4 w-4" />
+                      {item.label}
+                    </Link>
+                  ))}
                 </div>
               )}
             </div>
           ))}
         </div>
 
-        <div className="hidden border-t border-paper/20 p-3 md:block">
+        <div className="border-t border-paper/20 p-3">
           <p className="truncate text-xs text-paper/75">{org?.name ?? "-"}</p>
           <p className="truncate text-xs text-paper">{user.email}</p>
           <Button
@@ -132,6 +140,79 @@ export function DashboardShell({
           </Button>
         </div>
       </aside>
+
+      {/* ── Mobile Bottom Nav Bar ── */}
+      <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-stroke bg-vault-950/95 backdrop-blur-md md:hidden safe-area-bottom">
+        <div className="flex items-stretch justify-around px-1">
+          {mobileNavItems.map((item) => {
+            const isActive = pathname === item.href;
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={cn(
+                  "flex min-h-[56px] min-w-[56px] flex-1 flex-col items-center justify-center gap-0.5 py-1.5 text-[10px] transition-colors",
+                  isActive ? "text-coin" : "text-paper/60 active:text-paper"
+                )}
+              >
+                <item.icon className={cn("h-5 w-5", isActive && "drop-shadow-[0_0_6px_rgba(241,195,30,0.5)]")} />
+                <span className="leading-none">{item.label}</span>
+              </Link>
+            );
+          })}
+          {/* "Mais" button */}
+          <button
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            className={cn(
+              "flex min-h-[56px] min-w-[56px] flex-1 flex-col items-center justify-center gap-0.5 py-1.5 text-[10px] transition-colors",
+              mobileMenuOpen ? "text-coin" : "text-paper/60 active:text-paper"
+            )}
+          >
+            <Menu className="h-5 w-5" />
+            <span className="leading-none">Mais</span>
+          </button>
+        </div>
+      </nav>
+
+      {/* ── Mobile "Mais" Drawer ── */}
+      {mobileMenuOpen && (
+        <>
+          <div className="fixed inset-0 z-50 bg-black/50 md:hidden" onClick={() => setMobileMenuOpen(false)} />
+          <div className="fixed bottom-0 left-0 right-0 z-50 max-h-[70vh] overflow-y-auto rounded-t-2xl border-t border-stroke bg-vault-950 text-paper md:hidden safe-area-bottom animate-fade-in-up">
+            <div className="flex items-center justify-between border-b border-paper/10 px-4 py-3">
+              <span className="font-display text-base text-coin">Menu Completo</span>
+              <button onClick={() => setMobileMenuOpen(false)} className="rounded-full p-2 hover:bg-paper/10">
+                <ChevronDown className="h-5 w-5 text-paper/60" />
+              </button>
+            </div>
+            <div className="grid grid-cols-4 gap-1 p-3">
+              {navSections.flatMap((s) => s.items).map((item) => (
+                <Link
+                  key={item.href + item.label}
+                  href={item.href}
+                  onClick={() => setMobileMenuOpen(false)}
+                  className={cn(
+                    "flex flex-col items-center gap-1.5 rounded-xl p-3 text-center transition-colors min-h-[72px] justify-center",
+                    pathname === item.href.split("?")[0]
+                      ? "bg-coin/10 text-coin"
+                      : "text-paper/70 active:bg-paper/10"
+                  )}
+                >
+                  <item.icon className="h-5 w-5" />
+                  <span className="text-[10px] leading-tight">{item.label}</span>
+                </Link>
+              ))}
+              <button
+                onClick={() => { setMobileMenuOpen(false); signOut(); }}
+                className="flex flex-col items-center gap-1.5 rounded-xl p-3 text-paper/50 active:bg-paper/10 min-h-[72px] justify-center"
+              >
+                <LogOut className="h-5 w-5" />
+                <span className="text-[10px] leading-tight">Sair</span>
+              </button>
+            </div>
+          </div>
+        </>
+      )}
 
       <main className="flex-1 overflow-auto pb-20 md:pb-6">
         <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-stroke/90 bg-paper/80 px-4 backdrop-blur supports-[backdrop-filter]:bg-paper/70">

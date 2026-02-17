@@ -236,24 +236,35 @@ export function DashboardClient({
             <p className="mt-1 text-sm text-paper/85">Visão mensal com distribuição, alertas e metas.</p>
           </div>
 
-          {/* Level Badge */}
-          <div className="hidden sm:flex items-center gap-3 rounded-xl bg-paper/10 backdrop-blur-sm px-4 py-2.5 border border-paper/15">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-coin text-ink font-bold text-xs shadow-md">
-              Lv.{levelIndex}
-            </div>
-            <div className="min-w-[120px]">
-              <p className="text-sm font-semibold text-coin leading-tight">
-                {currentLevel.emoji} {currentLevel.title}
-              </p>
-              <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-paper/20">
-                <div
-                  className="h-full rounded-full bg-gradient-to-r from-coin to-coin/70 transition-all duration-700"
-                  style={{ width: `${levelPct}%` }}
-                />
+          {/* Level Badge — compact on mobile, expanded on sm+ */}
+          <div className="flex items-center gap-2">
+            {/* Mobile compact badge */}
+            <div className="flex sm:hidden items-center gap-1.5 rounded-lg bg-paper/10 backdrop-blur-sm px-2.5 py-1.5 border border-paper/15">
+              <div className="flex h-7 w-7 items-center justify-center rounded-full bg-coin text-ink font-bold text-[10px] shadow-md">
+                {levelIndex}
               </div>
-              <p className="mt-0.5 text-[10px] text-paper/60">
-                {xp} XP {nextLevel && `· ${nextLevel.minXP - xp} para Lv.${levelIndex + 1}`}
-              </p>
+              <span className="text-sm">{currentLevel.emoji}</span>
+            </div>
+
+            {/* Desktop expanded badge */}
+            <div className="hidden sm:flex items-center gap-3 rounded-xl bg-paper/10 backdrop-blur-sm px-4 py-2.5 border border-paper/15">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-coin text-ink font-bold text-xs shadow-md">
+                Lv.{levelIndex}
+              </div>
+              <div className="min-w-[120px]">
+                <p className="text-sm font-semibold text-coin leading-tight">
+                  {currentLevel.emoji} {currentLevel.title}
+                </p>
+                <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-paper/20">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-coin to-coin/70 transition-all duration-700"
+                    style={{ width: `${levelPct}%` }}
+                  />
+                </div>
+                <p className="mt-0.5 text-[10px] text-paper/60">
+                  {xp} XP {nextLevel && `· ${nextLevel.minXP - xp} para Lv.${levelIndex + 1}`}
+                </p>
+              </div>
             </div>
           </div>
         </div>
