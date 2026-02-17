@@ -12,7 +12,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "validate:env": "node scripts/validate-env.mjs",
-    "db:check": "node scripts/check-supabase-connection.mjs"
+    "db:check": "node scripts/check-supabase-connection.mjs",
+    "db:bundle": "node scripts/generate-setup-sql.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",

@@ -1,12 +1,12 @@
-# Financeiro Lazy
+﻿# Financeiro Lazy
 
-Módulo web de controle financeiro com **mínimo de cliques**: FAB para novo lançamento, Command Palette (Ctrl+K), modal único para cadastro, sugestões por descrição e templates rápidos.
+MÃ³dulo web de controle financeiro com **mÃ­nimo de cliques**: FAB para novo lanÃ§amento, Command Palette (Ctrl+K), modal Ãºnico para cadastro, sugestÃµes por descriÃ§Ã£o e templates rÃ¡pidos.
 
 **Stack:** Next.js 14 (App Router), TypeScript, Tailwind, shadcn/ui, Recharts, TanStack Table, React Hook Form + Zod, Supabase (Auth, Postgres, Storage, RLS).
 
 ---
 
-## Variáveis de ambiente
+## VariÃ¡veis de ambiente
 
 Crie `.env.local` na raiz:
 
@@ -16,13 +16,13 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=sua-anon-key
 CRON_SECRET=um-segredo-forte-opcional-para-endpoints-cron
 ```
 
-No Supabase: **Settings → API** → URL e anon key.
+No Supabase: **Settings â†’ API** â†’ URL e anon key.
 
 ---
 
 ## Rodar local
 
-1. Instale dependências:
+1. Instale dependÃªncias:
 
 ```bash
 npm install
@@ -51,6 +51,7 @@ Acesse [http://localhost:3000](http://localhost:3000).
 
 - `npm run validate:env` valida formato e placeholders das variaveis obrigatorias.
 - `npm run db:check` testa conectividade com o endpoint Auth do Supabase.
+- `npm run db:bundle` gera o SQL unico `SETUP_DB.sql` a partir de `supabase/migrations/*`.
 
 ---
 
@@ -62,61 +63,68 @@ Em [supabase.com](https://supabase.com) crie um projeto e anote a URL e a **anon
 
 ### 2. Migrations
 
-No dashboard do Supabase: **SQL Editor** → New query. Execute na ordem:
+Padrao oficial: execute somente **um SQL unico**.
 
-1. Conteúdo de `supabase/migrations/00001_initial_schema.sql`
-2. Conteúdo de `supabase/migrations/00002_rls_policies.sql`
-3. Conteúdo de `supabase/migrations/00003_storage_bucket.sql`
-4. Conteúdo de `supabase/migrations/00005_org_bootstrap_policy.sql`
+No dashboard do Supabase: **SQL Editor** -> New query:
 
-(Opcional) Para seed de demo: `supabase/migrations/00004_seed_demo.sql` (ajuste o `SEED_USER_ID` após criar um usuário).
+1. Cole e execute todo o conteudo de `SETUP_DB.sql`.
+
+Esse arquivo e gerado automaticamente a partir de `supabase/migrations/*` e e o setup padrao para ambiente novo.
+
+Se voce alterar uma migration, regenere o SQL unico com:
+
+```bash
+npm run db:bundle
+```
+
+(Opcional) Para seed de demo: `supabase/migrations/00004_seed_demo.sql` (ajuste o `SEED_USER_ID` apos criar um usuario).
 
 ### 3. Auth
 
-- **Authentication → Providers**: habilite Email (e opcionalmente outros).
-- **URL Configuration**: em "Redirect URLs" adicione `http://localhost:3000/auth/callback` e, em produção, `https://seu-dominio.vercel.app/auth/callback`.
+- **Authentication â†’ Providers**: habilite Email (e opcionalmente outros).
+- **URL Configuration**: em "Redirect URLs" adicione `http://localhost:3000/auth/callback` e, em produÃ§Ã£o, `https://seu-dominio.vercel.app/auth/callback`.
 
 ### 4. Storage
 
-O bucket `attachments` é criado na migration 00003. RLS está configurado para pastas por `org_id`.
+O bucket `attachments` Ã© criado na migration 00003. RLS estÃ¡ configurado para pastas por `org_id`.
 
 ### 5. RLS
 
-As policies garantem isolamento por organização e papéis (admin, financeiro, leitura). Nenhuma configuração extra necessária após rodar as migrations.
+As policies garantem isolamento por organizaÃ§Ã£o e papÃ©is (admin, financeiro, leitura). Nenhuma configuraÃ§Ã£o extra necessÃ¡ria apÃ³s rodar as migrations.
 
 ---
 
 ## Deploy no Vercel
 
-1. Conecte o repositório ao Vercel.
-2. Em **Settings → Environment Variables** defina:
+1. Conecte o repositÃ³rio ao Vercel.
+2. Em **Settings â†’ Environment Variables** defina:
    - `NEXT_PUBLIC_SUPABASE_URL`
    - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 3. Em **Redirect URLs** do Supabase (Auth), adicione a URL do projeto (ex.: `https://financeiro-lazy.vercel.app/auth/callback`).
 4. Deploy.
 
-Não é necessário build command ou output custom; o Next.js é detectado automaticamente.
+NÃ£o Ã© necessÃ¡rio build command ou output custom; o Next.js Ã© detectado automaticamente.
 
 ---
 
 ## Uso
 
 - **Login:** e-mail/senha (Supabase Auth).
-- **Primeiro acesso:** crie uma organização (onboarding).
-- **Dashboard:** Saldo em Órbita, receitas/despesas do mês, fluxo de caixa (90 dias), despesas por categoria, insights e painel de gamificação (nível, XP, missões e conquistas).
-- **Lançamentos:** lista com filtro e busca; botão **+** (FAB) ou Command Palette (**Ctrl+K**) para novo lançamento em um único modal.
+- **Primeiro acesso:** crie uma organizaÃ§Ã£o (onboarding).
+- **Dashboard:** Saldo em Ã“rbita, receitas/despesas do mÃªs, fluxo de caixa (90 dias), despesas por categoria, insights e painel de gamificaÃ§Ã£o (nÃ­vel, XP, missÃµes e conquistas).
+- **LanÃ§amentos:** lista com filtro e busca; botÃ£o **+** (FAB) ou Command Palette (**Ctrl+K**) para novo lanÃ§amento em um Ãºnico modal.
 - **Cadastros:** abas Contas, Categorias, Tags (e futuramente regras recorrentes).
-- **Configurações:** organização, usuários, integrações (em breve).
+- **ConfiguraÃ§Ãµes:** organizaÃ§Ã£o, usuÃ¡rios, integraÃ§Ãµes (em breve).
 
 ### Embed
 
 - URL: `/embed?token=SEU_TOKEN`.
-- O token deve corresponder a um `token_hash` em `api_tokens` (criado por admin na org). Para demo, pode-se inserir um registro em `api_tokens` com `token_hash` = valor que você usar na URL.
+- O token deve corresponder a um `token_hash` em `api_tokens` (criado por admin na org). Para demo, pode-se inserir um registro em `api_tokens` com `token_hash` = valor que vocÃª usar na URL.
 
 ### API (para sistema existente)
 
-- **POST /api/transactions** – criar lançamento (body JSON com `org_id`, `type`, `amount`, `date`, `account_id`, etc.). Requer sessão Supabase (cookie).
-- **GET /api/kpis?org_id=UUID** – retorna `saldo_orbita`, `receitas_mes`, `despesas_mes`, `resultado_mes`. Requer sessão e que o usuário seja membro da org.
+- **POST /api/transactions** â€“ criar lanÃ§amento (body JSON com `org_id`, `type`, `amount`, `date`, `account_id`, etc.). Requer sessÃ£o Supabase (cookie).
+- **GET /api/kpis?org_id=UUID** â€“ retorna `saldo_orbita`, `receitas_mes`, `despesas_mes`, `resultado_mes`. Requer sessÃ£o e que o usuÃ¡rio seja membro da org.
 
 Webhooks (transaction.created, budget.alert, etc.) podem ser implementados via Supabase Database Webhooks ou Edge Functions.
 
@@ -151,8 +159,10 @@ supabase/migrations/      # SQL + RLS
 
 ---
 
-## Segurança
+## SeguranÃ§a
 
-- RLS ativo em todas as tabelas; políticas por org e role.
-- Validação server-side com Zod nas APIs e server actions.
-- Não exponha a `service_role` key no front; use apenas `anon` key com RLS.
+- RLS ativo em todas as tabelas; polÃ­ticas por org e role.
+- ValidaÃ§Ã£o server-side com Zod nas APIs e server actions.
+- NÃ£o exponha a `service_role` key no front; use apenas `anon` key com RLS.
+
+
