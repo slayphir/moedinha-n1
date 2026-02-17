@@ -7,7 +7,9 @@ import { env } from "@/lib/env";
 export function createAdminClient() {
   const key = env.SUPABASE_SERVICE_ROLE_KEY;
   if (!key) return null;
-  return createSupabaseClient(env.NEXT_PUBLIC_SUPABASE_URL, key);
+  return createSupabaseClient(env.NEXT_PUBLIC_SUPABASE_URL, key, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+  });
 }
 
 export async function createClient() {

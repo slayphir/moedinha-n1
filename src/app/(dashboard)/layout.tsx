@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { OrgProvider } from "@/contexts/org-context";
@@ -30,7 +31,9 @@ export default async function DashboardLayout({
 
   return (
     <OrgProvider initialOrg={org as Org | null} initialOrgId={orgId}>
-      <DashboardShell user={user}>{children}</DashboardShell>
+      <Suspense>
+        <DashboardShell user={user}>{children}</DashboardShell>
+      </Suspense>
     </OrgProvider>
   );
 }
