@@ -1,0 +1,169 @@
+
+> financeiro-lazy@0.1.0 lint
+> next lint
+
+
+./src/app/(dashboard)/dashboard/faturas/_components/invoice-client.tsx
+4:40  Error: 'startOfDay' is defined but never used.  @typescript-eslint/no-unused-vars
+4:52  Error: 'endOfDay' is defined but never used.  @typescript-eslint/no-unused-vars
+4:80  Error: 'isBefore' is defined but never used.  @typescript-eslint/no-unused-vars
+6:29  Error: 'CardHeader' is defined but never used.  @typescript-eslint/no-unused-vars
+6:41  Error: 'CardTitle' is defined but never used.  @typescript-eslint/no-unused-vars
+6:52  Error: 'CardDescription' is defined but never used.  @typescript-eslint/no-unused-vars
+8:49  Error: 'Calendar' is defined but never used.  @typescript-eslint/no-unused-vars
+86:11  Error: 'isPaid' is assigned a value but never used.  @typescript-eslint/no-unused-vars
+
+./src/app/(dashboard)/dashboard/faturas/_components/invoice-view.tsx
+7:37  Error: 'Calendar' is defined but never used.  @typescript-eslint/no-unused-vars
+7:47  Error: 'AlertCircle' is defined but never used.  @typescript-eslint/no-unused-vars
+18:37  Error: 'availableInvoices' is defined but never used.  @typescript-eslint/no-unused-vars
+130:52  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+
+./src/app/(dashboard)/dashboard/metas/metas-client.tsx
+9:10  Error: 'ptBR' is defined but never used.  @typescript-eslint/no-unused-vars
+73:12  Error: 'deletingId' is assigned a value but never used.  @typescript-eslint/no-unused-vars
+240:86  Error: `"` can be escaped with `&quot;`, `&ldquo;`, `&#34;`, `&rdquo;`.  react/no-unescaped-entities
+240:98  Error: `"` can be escaped with `&quot;`, `&ldquo;`, `&#34;`, `&rdquo;`.  react/no-unescaped-entities
+
+./src/app/(dashboard)/dashboard/metas/_components/break-pig-dialog.tsx
+79:49  Error: `"` can be escaped with `&quot;`, `&ldquo;`, `&#34;`, `&rdquo;`.  react/no-unescaped-entities
+79:61  Error: `"` can be escaped with `&quot;`, `&ldquo;`, `&#34;`, `&rdquo;`.  react/no-unescaped-entities
+
+./src/app/(dashboard)/dashboard/metas/_components/goal-funding-widget.tsx
+29:74  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+49:51  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+112:109  Error: `"` can be escaped with `&quot;`, `&ldquo;`, `&#34;`, `&rdquo;`.  react/no-unescaped-entities
+112:118  Error: `"` can be escaped with `&quot;`, `&ldquo;`, `&#34;`, `&rdquo;`.  react/no-unescaped-entities
+112:130  Error: `"` can be escaped with `&quot;`, `&ldquo;`, `&#34;`, `&rdquo;`.  react/no-unescaped-entities
+112:145  Error: `"` can be escaped with `&quot;`, `&ldquo;`, `&#34;`, `&rdquo;`.  react/no-unescaped-entities
+
+./src/app/(dashboard)/dashboard/metas/_components/goal-wizard.tsx
+7:47  Error: 'Wallet' is defined but never used.  @typescript-eslint/no-unused-vars
+36:34  Error: 'CreateGoalInput' is defined but never used.  @typescript-eslint/no-unused-vars
+280:88  Error: `"` can be escaped with `&quot;`, `&ldquo;`, `&#34;`, `&rdquo;`.  react/no-unescaped-entities
+280:94  Error: `"` can be escaped with `&quot;`, `&ldquo;`, `&#34;`, `&rdquo;`.  react/no-unescaped-entities
+
+./src/app/(dashboard)/dashboard/metas/_components/piggy-bank-card.tsx
+9:10  Error: 'useState' is defined but never used.  @typescript-eslint/no-unused-vars
+
+./src/app/(dashboard)/dashboard/relatorios/ir/page.tsx
+18:8  Warning: React Hook useEffect has a missing dependency: 'fetchData'. Either include it or remove the dependency array.  react-hooks/exhaustive-deps
+
+./src/app/(dashboard)/dashboard/relatorios/_components/cash-flow-chart.tsx
+39:47  Error: 'label' is defined but never used.  @typescript-eslint/no-unused-vars
+39:56  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+
+./src/app/(dashboard)/dashboard/relatorios/_components/reduction-plan-modal.tsx
+10:10  Error: 'Button' is defined but never used.  @typescript-eslint/no-unused-vars
+
+./src/app/actions/budgets.ts
+124:35  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+
+./src/app/actions/calendar.ts
+4:61  Error: 'getDay' is defined but never used.  @typescript-eslint/no-unused-vars
+4:88  Error: 'isSameDay' is defined but never used.  @typescript-eslint/no-unused-vars
+4:99  Error: 'isSameMonth' is defined but never used.  @typescript-eslint/no-unused-vars
+4:122  Error: 'startOfMonth' is defined but never used.  @typescript-eslint/no-unused-vars
+4:136  Error: 'startOfWeek' is defined but never used.  @typescript-eslint/no-unused-vars
+4:149  Error: 'endOfWeek' is defined but never used.  @typescript-eslint/no-unused-vars
+4:160  Error: 'addDays' is defined but never used.  @typescript-eslint/no-unused-vars
+68:36  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+
+./src/app/actions/funding.ts
+48:59  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+
+./src/app/actions/insights.ts
+15:15  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+
+./src/app/actions/invoices.ts
+4:32  Error: 'setDate' is defined but never used.  @typescript-eslint/no-unused-vars
+25:19  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+51:9  Error: 'closingDate' is never reassigned. Use 'const' instead.  prefer-const
+
+./src/app/actions/ir-helper.ts
+4:10  Error: 'format' is defined but never used.  @typescript-eslint/no-unused-vars
+4:18  Error: 'parseISO' is defined but never used.  @typescript-eslint/no-unused-vars
+75:11  Error: 'recordSnapshot' is assigned a value but never used.  @typescript-eslint/no-unused-vars
+75:29  Error: 'dateStr' is defined but never used.  @typescript-eslint/no-unused-vars
+
+./src/app/actions/notifications.ts
+77:14  Error: 'error' is defined but never used.  @typescript-eslint/no-unused-vars
+
+./src/app/actions/projections.ts
+105:36  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+114:11  Error: 'endDate' is assigned a value but never used.  @typescript-eslint/no-unused-vars
+149:17  Error: 'nextDue' is assigned a value but never used.  @typescript-eslint/no-unused-vars
+149:17  Error: 'nextDue' is never reassigned. Use 'const' instead.  prefer-const
+
+./src/app/actions/recurring.ts
+6:50  Error: 'isBefore' is defined but never used.  @typescript-eslint/no-unused-vars
+82:9  Error: 'updates' is never reassigned. Use 'const' instead.  prefer-const
+82:18  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+
+./src/app/actions/reserves.ts
+4:10  Error: 'revalidatePath' is defined but never used.  @typescript-eslint/no-unused-vars
+12:15  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+
+./src/app/api/cron/telegram/route.ts
+4:10  Error: 'startOfMonth' is defined but never used.  @typescript-eslint/no-unused-vars
+4:24  Error: 'endOfMonth' is defined but never used.  @typescript-eslint/no-unused-vars
+7:27  Error: 'request' is defined but never used.  @typescript-eslint/no-unused-vars
+39:27  Error: 'accounts' is assigned a value but never used.  @typescript-eslint/no-unused-vars
+
+./src/components/cadastros/cadastros-client.tsx
+17:10  Error: 'AlertTriangle' is defined but never used.  @typescript-eslint/no-unused-vars
+87:12  Error: 'openBudgetDialog' is defined but never used.  @typescript-eslint/no-unused-vars
+
+./src/components/cadastros/create-account-dialog.tsx
+31:5  Error: 'defaultOpen' is defined but never used.  @typescript-eslint/no-unused-vars
+59:11  Error: 'accountType' is assigned a value but never used.  @typescript-eslint/no-unused-vars
+
+./src/components/calendar/financial-calendar.tsx
+6:37  Error: 'MoreHorizontal' is defined but never used.  @typescript-eslint/no-unused-vars
+6:65  Error: 'CalendarIcon' is defined but never used.  @typescript-eslint/no-unused-vars
+8:10  Error: 'Card' is defined but never used.  @typescript-eslint/no-unused-vars
+8:16  Error: 'CardContent' is defined but never used.  @typescript-eslint/no-unused-vars
+8:29  Error: 'CardHeader' is defined but never used.  @typescript-eslint/no-unused-vars
+8:41  Error: 'CardTitle' is defined but never used.  @typescript-eslint/no-unused-vars
+11:27  Error: 'CalendarEvent' is defined but never used.  @typescript-eslint/no-unused-vars
+66:41  Error: 'dayIdx' is defined but never used.  @typescript-eslint/no-unused-vars
+70:27  Error: 'isSelected' is assigned a value but never used.  @typescript-eslint/no-unused-vars
+72:27  Error: 'hasEvents' is assigned a value but never used.  @typescript-eslint/no-unused-vars
+
+./src/components/dashboard/filters/global-filter.tsx
+5:10  Error: 'Button' is defined but never used.  @typescript-eslint/no-unused-vars
+14:22  Error: 'CalendarIcon' is defined but never used.  @typescript-eslint/no-unused-vars
+14:36  Error: 'Filter' is defined but never used.  @typescript-eslint/no-unused-vars
+15:10  Error: 'Popover' is defined but never used.  @typescript-eslint/no-unused-vars
+15:19  Error: 'PopoverContent' is defined but never used.  @typescript-eslint/no-unused-vars
+15:35  Error: 'PopoverTrigger' is defined but never used.  @typescript-eslint/no-unused-vars
+16:10  Error: 'cn' is defined but never used.  @typescript-eslint/no-unused-vars
+23:57  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+
+./src/components/recurring/recurring-rule-dialog.tsx
+7:47  Error: 'Wallet' is defined but never used.  @typescript-eslint/no-unused-vars
+
+./src/components/recurring/recurring-rules-client.tsx
+3:10  Error: 'useState' is defined but never used.  @typescript-eslint/no-unused-vars
+7:10  Error: 'ptBR' is defined but never used.  @typescript-eslint/no-unused-vars
+8:29  Error: 'CardDescription' is defined but never used.  @typescript-eslint/no-unused-vars
+
+./src/components/ui/date-range-picker.tsx
+4:10  Error: 'addDays' is defined but never used.  @typescript-eslint/no-unused-vars
+
+./src/components/ui/use-toast.ts
+21:7  Error: 'actionTypes' is assigned a value but only used as a type.  @typescript-eslint/no-unused-vars
+
+./src/lib/distribution/metrics.ts
+14:10  Error: 'maxDate' is defined but never used.  @typescript-eslint/no-unused-vars
+135:9  Error: 'monthStr' is assigned a value but never used.  @typescript-eslint/no-unused-vars
+
+./src/lib/distribution/validation.ts
+73:7  Error: 'delta' is never reassigned. Use 'const' instead.  prefer-const
+
+./src/lib/insights-engine.ts
+12:16  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+66:92  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+146:44  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+
+info  - Need to disable some ESLint rules? Learn more here: https://nextjs.org/docs/basic-features/eslint#disabling-rules

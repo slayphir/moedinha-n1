@@ -1,0 +1,7 @@
+src/app/(dashboard)/dashboard/cadastros/page.tsx(83,7): error TS2353: Object literal may only specify known properties, and 'categoryId' does not exist in type '{ id: string; amount: number; alert_threshold: number; spent: number; usage_pct: number; near_limit: boolean; over_limit: boolean; }'.
+src/app/(dashboard)/dashboard/cadastros/page.tsx(102,7): error TS2322: Type 'Record<string, { id: string; amount: number; alert_threshold: number; spent: number; usage_pct: number; near_limit: boolean; over_limit: boolean; }>' is not assignable to type 'Record<string, CategoryBudgetInfo>'.
+  'string' index signatures are incompatible.
+    Type '{ id: string; amount: number; alert_threshold: number; spent: number; usage_pct: number; near_limit: boolean; over_limit: boolean; }' is missing the following properties from type 'CategoryBudgetInfo': categoryId, categoryName
+src/app/(dashboard)/dashboard/cartoes/[id]/page.tsx(73,17): error TS2739: Type '{ data?: InvoiceData | undefined; error?: string | undefined; }' is missing the following properties from type 'InvoiceData': account, period, invoice, transactions
+src/components/budgets/budget-card.tsx(79,91): error TS2322: Type '{ value: number; className: string; indicatorClassName: string; }' is not assignable to type 'IntrinsicAttributes & Omit<ProgressProps & RefAttributes<HTMLDivElement>, "ref"> & RefAttributes<HTMLDivElement>'.
+  Property 'indicatorClassName' does not exist on type 'IntrinsicAttributes & Omit<ProgressProps & RefAttributes<HTMLDivElement>, "ref"> & RefAttributes<HTMLDivElement>'.
