@@ -13,12 +13,29 @@ function toSlug(value: string): string {
     .replace(/-+/g, "-");
 }
 
+async function logDebug(step: string, data: Record<string, unknown>) {
+  try {
+    await fetch("http://127.0.0.1:7242/ingest/b8bb874d-5da7-44c6-89e4-c57717707beb", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ location: "create-org.ts", message: step, data, timestamp: Date.now() }),
+    });
+  } catch {
+    /* noop */
+  }
+}
+
 export async function createOrganization(input: { name: string; slug?: string }) {
   const supabase = await createClient();
   const {
     data: { user },
+    error: userError,
   } = await supabase.auth.getUser();
-  if (!user) return { error: "Nao autorizado" };
+  if (!user) {
+    await logDebug("createOrg_noUser", { hasUser: false, userError: userError?.message });
+    return { error: "Nao autorizado" };
+  }
+  await logDebug("createOrg_hasUser", { userId: user.id, hasUser: true });
 
   const cleanName = input.name.trim();
   if (!cleanName) return { error: "Informe um nome para a organizacao." };
@@ -32,6 +49,11 @@ export async function createOrganization(input: { name: string; slug?: string })
     .single();
 
   if (orgError) {
+    await logDebug("createOrg_orgsInsert_fail", {
+      step: "orgs_insert",
+      code: orgError.code,
+      message: orgError.message,
+    });
     if (orgError.code === "23505") return { error: "Slug ja existe. Tente um nome diferente para a URL." };
     return { error: formatDbError(orgError) };
   }
@@ -43,6 +65,11 @@ export async function createOrganization(input: { name: string; slug?: string })
   });
 
   if (memberError) {
+    await logDebug("createOrg_orgMembersInsert_fail", {
+      step: "org_members_insert",
+      code: memberError.code,
+      message: memberError.message,
+    });
     if (memberError.code === "42501") {
       return {
         error:

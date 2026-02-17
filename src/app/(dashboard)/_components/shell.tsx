@@ -1,8 +1,8 @@
-﻿"use client";
+"use client";
 
 import { useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
 import { BarChart3, ChevronDown, Coins, LayoutDashboard, List, LogOut, Menu, Percent, Repeat, Settings, Tag, Target, Users, Wallet, CreditCard, Calendar as CalendarIcon, FileText } from "lucide-react";
@@ -20,6 +20,7 @@ export function DashboardShell({
   user: User;
 }) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { org } = useOrg();
   const [configOpen, setConfigOpen] = useState(true);
 
@@ -111,7 +112,7 @@ export function DashboardShell({
                       href={item.href}
                       className={cn(
                         "flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-all duration-200",
-                        pathname === item.href.split("?")[0] && (!item.href.includes("tab=") || (typeof window !== 'undefined' && window.location.search.includes(item.href.split("?")[1])))
+                        pathname === item.href.split("?")[0] && (!item.href.includes("tab=") || (item.href.includes("tab=") && searchParams.get("tab") === item.href.split("?")[1]?.split("=")[1]))
                           ? "bg-coin/10 font-medium text-coin border-l-2 border-coin animate-pulse-glow"
                           : "text-paper/80 hover:bg-vault-800 hover:text-paper hover:translate-x-1 border-l-2 border-transparent"
                       )}

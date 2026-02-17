@@ -25,8 +25,8 @@ export function FilterProvider({ children }: { children: React.ReactNode }) {
     const pathname = usePathname();
 
     const [dateRange, setDateRangeState] = useState<DateRange>({
-        from: startOfMonth(new Date()),
-        to: endOfMonth(new Date()),
+        from: startOfMonth(new Date(2024, 0, 15)),
+        to: endOfMonth(new Date(2024, 0, 15)),
     });
     const [preset, setPresetState] = useState<PeriodPreset>("month");
 
@@ -35,7 +35,7 @@ export function FilterProvider({ children }: { children: React.ReactNode }) {
         return new URLSearchParams(window.location.search);
     }
 
-    // Sync from URL on mount/update
+    // Sync from URL on mount/update; fallback to current month for hydration safety
     useEffect(() => {
         const searchParams = readCurrentParams();
         const startParam = searchParams.get("start");
@@ -47,6 +47,9 @@ export function FilterProvider({ children }: { children: React.ReactNode }) {
                 from: new Date(startParam),
                 to: new Date(endParam),
             });
+        } else {
+            const now = new Date();
+            setDateRangeState({ from: startOfMonth(now), to: endOfMonth(now) });
         }
 
         if (presetParam) {
