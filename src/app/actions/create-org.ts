@@ -1,6 +1,6 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createAdminClient } from "@/lib/supabase/server";
 
 function toSlug(value: string): string {
   return value
@@ -13,63 +13,38 @@ function toSlug(value: string): string {
     .replace(/-+/g, "-");
 }
 
-async function logDebug(step: string, data: Record<string, unknown>) {
-  try {
-    await fetch("http://127.0.0.1:7242/ingest/b8bb874d-5da7-44c6-89e4-c57717707beb", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ location: "create-org.ts", message: step, data, timestamp: Date.now() }),
-    });
-  } catch {
-    /* noop */
-  }
-}
-
 export async function createOrganization(input: { name: string; slug?: string }) {
   const supabase = await createClient();
   const {
     data: { user },
-    error: userError,
   } = await supabase.auth.getUser();
-  if (!user) {
-    await logDebug("createOrg_noUser", { hasUser: false, userError: userError?.message });
-    return { error: "Nao autorizado" };
-  }
-  await logDebug("createOrg_hasUser", { userId: user.id, hasUser: true });
+  if (!user) return { error: "Nao autorizado" };
 
   const cleanName = input.name.trim();
   if (!cleanName) return { error: "Informe um nome para a organizacao." };
 
   const normalizedSlug = toSlug(input.slug || cleanName) || `org-${Date.now().toString(36)}`;
 
-  const { data: org, error: orgError } = await supabase
+  const db = createAdminClient() ?? supabase;
+
+  const { data: org, error: orgError } = await db
     .from("orgs")
     .insert({ name: cleanName, slug: normalizedSlug })
     .select("id")
     .single();
 
   if (orgError) {
-    await logDebug("createOrg_orgsInsert_fail", {
-      step: "orgs_insert",
-      code: orgError.code,
-      message: orgError.message,
-    });
     if (orgError.code === "23505") return { error: "Slug ja existe. Tente um nome diferente para a URL." };
     return { error: formatDbError(orgError) };
   }
 
-  const { error: memberError } = await supabase.from("org_members").insert({
+  const { error: memberError } = await db.from("org_members").insert({
     org_id: org.id,
     user_id: user.id,
     role: "admin",
   });
 
   if (memberError) {
-    await logDebug("createOrg_orgMembersInsert_fail", {
-      step: "org_members_insert",
-      code: memberError.code,
-      message: memberError.message,
-    });
     if (memberError.code === "42501") {
       return {
         error:
@@ -79,7 +54,7 @@ export async function createOrganization(input: { name: string; slug?: string })
     return { error: formatDbError(memberError) };
   }
 
-  const { error: accountsError } = await supabase.from("accounts").insert({
+  const { error: accountsError } = await db.from("accounts").insert({
     org_id: org.id,
     name: "Conta Principal",
     type: "bank",
@@ -89,7 +64,7 @@ export async function createOrganization(input: { name: string; slug?: string })
 
   if (accountsError) return { error: formatDbError(accountsError) };
 
-  const { error: categoriesError } = await supabase.from("categories").insert([
+  const { error: categoriesError } = await db.from("categories").insert([
     { org_id: org.id, name: "Salario", type: "income" },
     { org_id: org.id, name: "Alimentacao", type: "expense" },
     { org_id: org.id, name: "Moradia", type: "expense" },

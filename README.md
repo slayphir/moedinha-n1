@@ -1,4 +1,4 @@
-﻿# Financeiro Lazy
+# Financeiro Lazy
 
 MÃ³dulo web de controle financeiro com **mÃ­nimo de cliques**: FAB para novo lanÃ§amento, Command Palette (Ctrl+K), modal Ãºnico para cadastro, sugestÃµes por descriÃ§Ã£o e templates rÃ¡pidos.
 
@@ -13,6 +13,7 @@ Crie `.env.local` na raiz:
 ```env
 NEXT_PUBLIC_SUPABASE_URL=https://seu-projeto.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=sua-anon-key
+SUPABASE_SERVICE_ROLE_KEY=sua-service-role-key
 CRON_SECRET=um-segredo-forte-opcional-para-endpoints-cron
 ```
 

@@ -1,6 +1,14 @@
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { env } from "@/lib/env";
+
+/** Cliente admin (bypassa RLS). Use apenas em Server Actions que validam o usuario antes. */
+export function createAdminClient() {
+  const key = env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!key) return null;
+  return createSupabaseClient(env.NEXT_PUBLIC_SUPABASE_URL, key);
+}
 
 export async function createClient() {
   const cookieStore = await cookies();

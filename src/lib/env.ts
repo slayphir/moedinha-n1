@@ -15,12 +15,14 @@ const envSchema = z.object({
     .string({ required_error: "NEXT_PUBLIC_SUPABASE_ANON_KEY nao definida." })
     .min(20, "NEXT_PUBLIC_SUPABASE_ANON_KEY parece invalida."),
   CRON_SECRET: z.string().min(12, "CRON_SECRET muito curta.").optional(),
+  SUPABASE_SERVICE_ROLE_KEY: z.string().min(20).optional(),
 });
 
 const parsed = envSchema.safeParse({
   NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
   NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
   CRON_SECRET: process.env.CRON_SECRET,
+  SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
 });
 
 if (!parsed.success) {
