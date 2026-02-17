@@ -61,6 +61,7 @@ export function CreateOrgForm() {
         <Label htmlFor="name">Nome da organizacao</Label>
         <Input
           id="name"
+          name="name"
           value={name}
           onChange={(event) => handleNameChange(event.target.value)}
           placeholder="Moedinha N°1 Holding"
@@ -71,6 +72,7 @@ export function CreateOrgForm() {
         <Label htmlFor="slug">Slug (URL)</Label>
         <Input
           id="slug"
+          name="slug"
           value={slug}
           onChange={(event) => setSlug(toSlug(event.target.value))}
           placeholder="moedinha-n1-holding"
