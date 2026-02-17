@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { DM_Serif_Display, Sora } from "next/font/google";
 import "./globals.css";
-import { SupabaseListener } from "./_components/supabase-listener";
 import { Providers } from "./providers";
 import { Toaster } from "@/components/ui/toaster";
 import { FilterProvider } from "@/contexts/filter-context";
@@ -42,7 +41,6 @@ export default function RootLayout({
       <body className={`${bodyFont.variable} ${displayFont.variable} min-h-screen bg-background font-sans antialiased`}>
         <Providers>
           <FilterProvider>
-            <SupabaseListener />
             {children}
             <Toaster />
           </FilterProvider>
@@ -51,15 +49,22 @@ export default function RootLayout({
           dangerouslySetInnerHTML={{
             __html: `
               if ('serviceWorker' in navigator) {
-                window.addEventListener('load', function() {
-                  navigator.serviceWorker.register('/sw.js').then(
-                    function(registration) {
-                      console.log('Service Worker registration successful with scope: ', registration.scope);
-                    },
-                    function(err) {
-                      console.log('Service Worker registration failed: ', err);
+                window.addEventListener('load', async function() {
+                  try {
+                    const registrations = await navigator.serviceWorker.getRegistrations();
+                    await Promise.all(registrations.map((registration) => registration.unregister()));
+
+                    if ('caches' in window) {
+                      const keys = await caches.keys();
+                      await Promise.all(
+                        keys
+                          .filter((key) => key.toLowerCase().includes('moedinha'))
+                          .map((key) => caches.delete(key))
+                      );
                     }
-                  );
+                  } catch (err) {
+                    console.log('Service Worker cleanup failed: ', err);
+                  }
                 });
               }
             `,
