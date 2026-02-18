@@ -5,6 +5,7 @@ import { formatCurrency } from "@/lib/utils";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { EmptyInvoiceState } from "./_components/empty-invoice-state";
+import { NewCardButton } from "./_components/new-card-button";
 
 export const revalidate = 60;
 
@@ -159,9 +160,12 @@ export default async function FaturasPage({
               className="h-10 rounded-md border border-input bg-background px-3 text-sm"
             />
           </div>
-          <Button type="submit" size="sm">
-            Atualizar
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button type="submit" size="sm">
+              Atualizar
+            </Button>
+            <NewCardButton />
+          </div>
         </form>
       </section>
 

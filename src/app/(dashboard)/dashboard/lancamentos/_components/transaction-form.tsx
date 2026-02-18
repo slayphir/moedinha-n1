@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { addMonths, parseISO } from "date-fns";
-import { useForm } from "react-hook-form";
+import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { ChevronDown, ChevronUp, Sparkles } from "lucide-react";
 import { transactionSchema, type TransactionFormValues } from "@/lib/validators/transaction";
@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { CurrencyInput } from "@/components/ui/currency-input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { createClient } from "@/lib/supabase/client";
 import { CreateAccountDialog } from "./create-account-dialog";
@@ -85,6 +86,7 @@ const defaultValues: TransactionFormValues = {
   fineAmount: 0,
   transferAccountId: null,
   contactId: null,
+  payPastInstallments: false,
 };
 
 function splitAmount(total: number, count: number): number[] {
@@ -110,7 +112,10 @@ function computeCreditCardDueDate(
 ): string | null {
   if (!dueDay || dueDay < 1 || dueDay > 31) return null;
 
+  if (!txDateIso || txDateIso.length !== 10) return null;
   const txDate = new Date(`${txDateIso}T12:00:00`);
+  if (Number.isNaN(txDate.getTime())) return null;
+
   let monthOffset = 0;
 
   if (closingDay && closingDay >= 1 && closingDay <= 31) {
@@ -241,6 +246,7 @@ export function TransactionForm({
   const type = watch("type");
   const sourceAccountId = watch("accountId");
   const txDate = watch("date");
+  const isPaid = watch("isPaid");
   const isInstallment = watch("isInstallment");
   const isRecurring = watch("isRecurring");
   const descriptionValue = watch("description") ?? "";
@@ -350,6 +356,12 @@ export function TransactionForm({
     setValue,
   ]);
 
+  useEffect(() => {
+    if (suggestedDueDate) {
+      setValue("dueDate", suggestedDueDate);
+    }
+  }, [suggestedDueDate, setValue]);
+
   const onInvalid = () => {
     trackQuickValidationError();
   };
@@ -391,13 +403,29 @@ export function TransactionForm({
         const parts = splitAmount(data.amount, data.installments);
         const startDate = parseISO(data.date);
         const dueDateBase = resolvedDueDate ? parseISO(resolvedDueDate) : null;
-        rows = parts.map((value, index) => ({
-          ...basePayload,
-          amount: value,
-          description: description ? `${description} (${index + 1}/${data.installments})` : `Parcela ${index + 1}/${data.installments}`,
-          date: addMonths(startDate, index).toISOString().slice(0, 10),
-          due_date: dueDateBase ? addMonths(dueDateBase, index).toISOString().slice(0, 10) : null,
-        }));
+        const todayStr = new Date().toISOString().slice(0, 10);
+
+        rows = parts.map((value, index) => {
+          const thisDueDate = dueDateBase ? addMonths(dueDateBase, index).toISOString().slice(0, 10) : null;
+          const thisDate = addMonths(startDate, index).toISOString().slice(0, 10);
+          const effectiveDate = thisDueDate || thisDate;
+
+          // If user wants to pay past installments and this installment is in the past (before today)
+          // override status to cleared. Otherwise keep global status (which is likely pending if isPaid is false).
+          let rowStatus = status as "pending" | "cleared";
+          if (data.payPastInstallments && effectiveDate < todayStr) {
+            rowStatus = "cleared";
+          }
+
+          return {
+            ...basePayload,
+            amount: value,
+            description: description ? `${description} (${index + 1}/${data.installments})` : `Parcela ${index + 1}/${data.installments}`,
+            date: thisDate,
+            due_date: thisDueDate,
+            status: rowStatus,
+          };
+        });
       } else {
         rows = [
           {
@@ -655,18 +683,21 @@ export function TransactionForm({
         <div className="grid grid-cols-[1fr_auto] items-end gap-2">
           <div className="space-y-2">
             <Label>Valor</Label>
-            <Input
-              type="number"
-              step="0.01"
-              inputMode="decimal"
-              autoFocus
-              placeholder="0.00"
-              {...amountRegister}
-              ref={(node) => {
-                amountRegister.ref(node);
-                amountInputRef.current = node;
-              }}
-              className="h-12 text-2xl font-semibold"
+            <Controller
+              control={form.control}
+              name="amount"
+              render={({ field: { value, onChange } }) => (
+                <CurrencyInput
+                  autoFocus
+                  value={value ?? 0}
+                  onChange={onChange}
+                  ref={(node) => {
+                    amountRegister.ref(node);
+                    amountInputRef.current = node;
+                  }}
+                  className="h-12 text-2xl font-semibold"
+                />
+              )}
             />
             {errors.amount && <p className="text-xs text-destructive">{errors.amount.message}</p>}
           </div>
@@ -782,17 +813,26 @@ export function TransactionForm({
               </div>
             </div>
 
-            {type === "expense" && (
-              <div className="space-y-2">
-                <Label>Vencimento (fatura)</Label>
-                <Input type="date" {...register("dueDate")} />
-                {!selectedDueDate && suggestedDueDate && (
-                  <p className="text-xs text-muted-foreground">
-                    Sugerido para este cartao: {suggestedDueDate}
-                  </p>
-                )}
+            {type === "expense" && isInstallment && !isPaid && (
+              <div className="space-y-2 rounded-md border border-amber-200 bg-amber-50 p-3">
+                <label className="flex items-center gap-2 text-sm text-amber-900">
+                  <input type="checkbox" {...register("payPastInstallments")} className="h-4 w-4 rounded border-amber-500 text-amber-600 focus:ring-amber-500" />
+                  Marcar parcelas anteriores a hoje como pagas
+                </label>
+                <p className="text-xs text-amber-700 ml-6">
+                  Util para lancar compras antigas parceladas. As parcelas futuras continuarao pendentes.
+                </p>
               </div>
             )}
+
+            {
+              type === "expense" && (
+                <div className="space-y-2">
+                  <Label>Vencimento (fatura)</Label>
+                  <Input type="date" {...register("dueDate")} />
+                </div>
+              )
+            }
 
             <div className="space-y-2">
               <Label>Descricao</Label>
@@ -809,42 +849,45 @@ export function TransactionForm({
               <TagSelector value={watch("tags") || []} onChange={(tags) => setValue("tags", tags)} />
             </div>
 
-            {type !== "transfer" && (
-              <div className="space-y-3">
-                <label className="flex items-center gap-2 text-sm">
-                  <input type="checkbox" {...register("isRecurring")} className="h-4 w-4 rounded border-input" />
-                  Tornar recorrente
-                </label>
-                {isRecurring && (
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label>Frequencia</Label>
-                      <Select
-                        value={watch("frequency") ?? "monthly"}
-                        onValueChange={(value) => setValue("frequency", asFrequency(value), { shouldValidate: true })}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="daily">Diaria</SelectItem>
-                          <SelectItem value="weekly">Semanal</SelectItem>
-                          <SelectItem value="monthly">Mensal</SelectItem>
-                          <SelectItem value="yearly">Anual</SelectItem>
-                        </SelectContent>
-                      </Select>
+            {
+              type !== "transfer" && (
+                <div className="space-y-3">
+                  <label className="flex items-center gap-2 text-sm">
+                    <input type="checkbox" {...register("isRecurring")} className="h-4 w-4 rounded border-input" />
+                    Tornar recorrente
+                  </label>
+                  {isRecurring && (
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label>Frequencia</Label>
+                        <Select
+                          value={watch("frequency") ?? "monthly"}
+                          onValueChange={(value) => setValue("frequency", asFrequency(value), { shouldValidate: true })}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="daily">Diaria</SelectItem>
+                            <SelectItem value="weekly">Semanal</SelectItem>
+                            <SelectItem value="monthly">Mensal</SelectItem>
+                            <SelectItem value="yearly">Anual</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Fim (opcional)</Label>
+                        <Input type="date" {...register("endDate")} />
+                      </div>
                     </div>
-                    <div className="space-y-2">
-                      <Label>Fim (opcional)</Label>
-                      <Input type="date" {...register("endDate")} />
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-      </form>
+                  )}
+                </div>
+              )
+            }
+          </div >
+        )
+        }
+      </form >
 
       <CreateAccountDialog
         open={newAccountOpen}
@@ -857,6 +900,6 @@ export function TransactionForm({
         onSuccess={(id) => setValue("categoryId", id, { shouldValidate: true })}
         defaultType={type === "transfer" ? "expense" : type}
       />
-    </div>
+    </div >
   );
 }

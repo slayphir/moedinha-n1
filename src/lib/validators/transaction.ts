@@ -26,6 +26,7 @@ export const transactionSchema = z
 
     interestAmount: z.coerce.number().min(0).optional().nullable(),
     fineAmount: z.coerce.number().min(0).optional().nullable(),
+    payPastInstallments: z.boolean().default(false),
   })
   .superRefine((data, ctx) => {
     if (data.type === "transfer" && !data.transferAccountId) {
