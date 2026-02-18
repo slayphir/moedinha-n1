@@ -9,9 +9,10 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useFinancialData } from "@/hooks/use-financial-data";
+import { CurrencyInput } from "@/components/ui/currency-input";
 
 const schema = z.object({
   name: z.string().min(1, "Nome e obrigatorio"),
@@ -111,6 +112,9 @@ export function EditAccountDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Editar Conta</DialogTitle>
+          <DialogDescription>
+            Faça alterações na sua conta. Clique em salvar quando terminar.
+          </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
@@ -166,7 +170,11 @@ export function EditAccountDialog({
             <div className="space-y-3 rounded-md border p-3 bg-muted/20">
               <div className="space-y-2">
                 <Label>Limite do cartao</Label>
-                <Input type="number" min={0} step="0.01" {...form.register("creditLimit")} />
+                <CurrencyInput
+                  value={form.watch("creditLimit") || 0}
+                  onChange={(val) => form.setValue("creditLimit", Number(val))}
+                  placeholder="R$ 0,00"
+                />
               </div>
 
               <div className="grid grid-cols-2 gap-4">

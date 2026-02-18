@@ -8,7 +8,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const schema = z.object({
@@ -65,6 +65,9 @@ export function CreateCategoryDialog({ open, onOpenChange, onSuccess }: {
             <DialogContent>
                 <DialogHeader>
                     <DialogTitle>Nova Categoria</DialogTitle>
+                    <DialogDescription>
+                        Crie uma nova categoria para organizar suas finanças.
+                    </DialogDescription>
                 </DialogHeader>
                 <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
                     <div className="space-y-2">

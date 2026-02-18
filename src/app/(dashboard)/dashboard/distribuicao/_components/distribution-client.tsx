@@ -19,6 +19,7 @@ import {
 } from "@/lib/distribution/validation";
 import type { BaseIncomeMode, DistributionEditMode } from "@/lib/types/database";
 import { Loader2, Plus, Save, Trash2 } from "lucide-react";
+import { CurrencyInput } from "@/components/ui/currency-input";
 
 type BucketEdit = {
   id: string;
@@ -299,12 +300,9 @@ export function DistributionClient({ distribution, orgId }: Props) {
               <option value="planned_manual">Valor planejado</option>
             </select>
             {baseIncomeMode === "planned_manual" && (
-              <Input
-                type="number"
-                step="0.01"
-                min={0}
+              <CurrencyInput
                 value={plannedIncome}
-                onChange={(event) => setPlannedIncome(event.target.value)}
+                onChange={(val) => setPlannedIncome(val)}
                 placeholder="0,00"
                 className="mt-2"
               />
@@ -390,9 +388,13 @@ export function DistributionClient({ distribution, orgId }: Props) {
                 </span>
               )}
             </span>
-            <Button type="button" onClick={handleSave} disabled={!canSave || isPending}>
+            <Button type="button" variant="outline" onClick={handleAddBucket} disabled={buckets.length >= 8 || isPending}>
+              <Plus className="mr-2 h-4 w-4" />
+              Adicionar
+            </Button>
+            <Button type="button" className="bg-emerald-600 text-white hover:bg-emerald-700" onClick={handleSave} disabled={!canSave || isPending}>
               {isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-              Salvar alteracoes
+              Salvar
             </Button>
           </div>
         </CardContent>

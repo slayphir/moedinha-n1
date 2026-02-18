@@ -12,6 +12,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { createAccount } from "@/app/actions/accounts";
 import { useToast } from "@/components/ui/use-toast";
 import { Checkbox } from "@/components/ui/checkbox";
+import { CurrencyInput } from "@/components/ui/currency-input";
+import { DialogDescription } from "@radix-ui/react-dialog";
 
 const schema = z.object({
     name: z.string().min(1, "Nome é obrigatório"),
@@ -90,6 +92,9 @@ export function CreateAccountDialog({
             <DialogContent className="sm:max-w-[425px]">
                 <DialogHeader>
                     <DialogTitle>Nova Conta / Cartão</DialogTitle>
+                    <DialogDescription>
+                        Preencha os dados da sua nova conta ou cartão de crédito.
+                    </DialogDescription>
                 </DialogHeader>
                 <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
                     <div className="space-y-2">
@@ -100,7 +105,11 @@ export function CreateAccountDialog({
                     <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
                             <Label>Saldo Inicial</Label>
-                            <Input type="number" step="0.01" {...form.register("initialBalance")} />
+                            <CurrencyInput
+                                value={form.watch("initialBalance") || 0}
+                                onChange={(val) => form.setValue("initialBalance", Number(val))}
+                                placeholder="R$ 0,00"
+                            />
                         </div>
                         <div className="space-y-2">
                             <Label>Tipo</Label>
@@ -139,7 +148,11 @@ export function CreateAccountDialog({
                         <div className="space-y-4 rounded-md border p-3 bg-muted/20">
                             <div className="space-y-2">
                                 <Label>Limite do Cartão</Label>
-                                <Input type="number" step="0.01" {...form.register("creditLimit")} placeholder="R$ 0,00" />
+                                <CurrencyInput
+                                    value={form.watch("creditLimit") || 0}
+                                    onChange={(val) => form.setValue("creditLimit", Number(val))}
+                                    placeholder="R$ 0,00"
+                                />
                             </div>
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-2">

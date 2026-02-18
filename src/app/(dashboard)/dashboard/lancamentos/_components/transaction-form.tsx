@@ -10,7 +10,7 @@ import { useFinancialData } from "@/hooks/use-financial-data";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { createClient } from "@/lib/supabase/client";
 import { CreateAccountDialog } from "./create-account-dialog";
@@ -559,8 +559,8 @@ export function TransactionForm({
   };
 
   return (
-    <>
-      <form onSubmit={handleSubmit(onSubmit, onInvalid)} onPointerDown={handleInteraction} className="space-y-4">
+    <div className="max-h-[80vh] overflow-y-auto pr-2 custom-scrollbar">
+      <form onSubmit={handleSubmit(onSubmit, onInvalid)} onPointerDown={handleInteraction} className="space-y-4 px-1">
         <div className="grid gap-3 md:grid-cols-2">
           <div className="space-y-2">
             <Label>Tipo</Label>
@@ -600,11 +600,27 @@ export function TransactionForm({
                 <SelectValue placeholder="Selecione" />
               </SelectTrigger>
               <SelectContent>
-                {accounts.map((account) => (
-                  <SelectItem key={account.id} value={account.id}>
-                    {account.name}
-                  </SelectItem>
-                ))}
+                <SelectGroup>
+                  <SelectLabel className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Minhas Contas</SelectLabel>
+                  {accounts
+                    .filter((a) => !a.is_credit_card && a.type !== "credit_card")
+                    .map((account) => (
+                      <SelectItem key={account.id} value={account.id}>
+                        {account.name}
+                      </SelectItem>
+                    ))}
+                </SelectGroup>
+                <div className="my-1 h-px bg-muted" />
+                <SelectGroup>
+                  <SelectLabel className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Cartões de Crédito</SelectLabel>
+                  {accounts
+                    .filter((a) => a.is_credit_card || a.type === "credit_card")
+                    .map((account) => (
+                      <SelectItem key={account.id} value={account.id}>
+                        {account.name}
+                      </SelectItem>
+                    ))}
+                </SelectGroup>
                 <SelectItem value="new" className="mt-1 border-t pt-1 font-semibold text-primary">
                   + Nova conta
                 </SelectItem>
@@ -841,6 +857,6 @@ export function TransactionForm({
         onSuccess={(id) => setValue("categoryId", id, { shouldValidate: true })}
         defaultType={type === "transfer" ? "expense" : type}
       />
-    </>
+    </div>
   );
 }
