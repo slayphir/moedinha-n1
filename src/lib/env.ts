@@ -13,9 +13,9 @@ const envSchema = z.object({
     .url("NEXT_PUBLIC_SUPABASE_URL invalida."),
   NEXT_PUBLIC_SUPABASE_ANON_KEY: z
     .string({ required_error: "NEXT_PUBLIC_SUPABASE_ANON_KEY nao definida." })
-    .min(20, "NEXT_PUBLIC_SUPABASE_ANON_KEY parece invalida."),
+    .min(10, "NEXT_PUBLIC_SUPABASE_ANON_KEY parece invalida."),
   CRON_SECRET: z.string().min(12, "CRON_SECRET muito curta.").optional(),
-  SUPABASE_SERVICE_ROLE_KEY: z.string().min(20).optional(),
+  SUPABASE_SERVICE_ROLE_KEY: z.string().min(10).optional(),
 });
 
 const parsed = envSchema.safeParse({

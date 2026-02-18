@@ -1,6 +1,7 @@
 "use server";
 
-import { createClient, createAdminClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/server";
+import postgres from "postgres";
 
 function toSlug(value: string): string {
   return value
@@ -25,72 +26,66 @@ export async function createOrganization(input: { name: string; slug?: string })
 
   const normalizedSlug = toSlug(input.slug || cleanName) || `org-${Date.now().toString(36)}`;
 
-  const db = createAdminClient() ?? supabase;
-
-  const { data: org, error: orgError } = await db
-    .from("orgs")
-    .insert({ name: cleanName, slug: normalizedSlug })
-    .select("id")
-    .single();
-
-  if (orgError) {
-    if (orgError.code === "23505") return { error: "Slug ja existe. Tente um nome diferente para a URL." };
-    return { error: formatDbError(orgError) };
+  if (!process.env.DATABASE_URL) {
+    console.error("DATABASE_URL nao definida");
+    return { error: "Erro de configuracao do servidor (DATABASE_URL ausente)" };
   }
 
-  const { error: memberError } = await db.from("org_members").insert({
-    org_id: org.id,
-    user_id: user.id,
-    role: "admin",
+  const sql = postgres(process.env.DATABASE_URL, {
+    ssl: { rejectUnauthorized: false }, // Required for Supabase transaction pooler (port 6543) or direct connection to production
+    prepare: false, // Supabase transaction pooler doesn't support prepared statements usually
   });
 
-  if (memberError) {
-    if (memberError.code === "42501") {
-      return {
-        error:
-          "Permissao insuficiente para vincular o primeiro membro. Rode a migration 00005_org_bootstrap_policy.sql.",
-      };
+  try {
+    const result = await sql.begin(async (txn: any) => {
+      // 1. Create Org
+      const [org] = await txn`
+        INSERT INTO orgs (name, slug)
+        VALUES (${cleanName}, ${normalizedSlug})
+        RETURNING id
+      `;
+
+      if (!org) throw new Error("Falha ao criar organizacao");
+
+      // 2. Create Member (Admin)
+      await txn`
+        INSERT INTO org_members (org_id, user_id, role)
+        VALUES (${org.id}, ${user.id}, 'admin')
+      `;
+
+      // 3. Create Main Account
+      await txn`
+        INSERT INTO accounts (org_id, name, type, currency, initial_balance)
+        VALUES (${org.id}, 'Conta Principal', 'bank', 'BRL', 0)
+      `;
+
+      // 4. Create Default Categories
+      await txn`
+        INSERT INTO categories (org_id, name, type)
+        VALUES 
+          (${org.id}, 'Salario', 'income'),
+          (${org.id}, 'Alimentacao', 'expense'),
+          (${org.id}, 'Moradia', 'expense')
+      `;
+
+      return { success: true, orgId: org.id };
+    });
+
+    console.log("[create-org] Success via direct DB:", result);
+    return { success: true };
+
+  } catch (error: any) {
+    console.error("[create-org] DB Error:", error);
+    if (error.code === "23505") { // Unique violation
+      return { error: "Slug ja existe. Tente outro." };
     }
-    return { error: formatDbError(memberError) };
+    return { error: "Erro ao criar organizacao: " + (error.message || "Erro desconhecido") };
+  } finally {
+    await sql.end();
   }
-
-  const { error: accountsError } = await db.from("accounts").insert({
-    org_id: org.id,
-    name: "Conta Principal",
-    type: "bank",
-    currency: "BRL",
-    initial_balance: 0,
-  });
-
-  if (accountsError) return { error: formatDbError(accountsError) };
-
-  const { error: categoriesError } = await db.from("categories").insert([
-    { org_id: org.id, name: "Salario", type: "income" },
-    { org_id: org.id, name: "Alimentacao", type: "expense" },
-    { org_id: org.id, name: "Moradia", type: "expense" },
-  ]);
-
-  if (categoriesError) return { error: formatDbError(categoriesError) };
-
-  return { success: true };
 }
 
-function formatDbError(err: { code?: string; message?: string; details?: string; hint?: string }): string {
-  const code = err?.code;
-  const message = err?.message;
-  if (code === "42501") {
-    return "Permissao negada no banco (RLS). Aplique as migrations de politicas (00002 e 00005) no Supabase.";
-  }
-  if (code === "42883") {
-    return "Funcao de seguranca ausente no banco. Rode as migrations 00001/00002 atualizadas.";
-  }
-  if (code === "42P01") {
-    return "Tabela ausente no banco. Rode as migrations iniciais do Supabase.";
-  }
-  if (message) {
-    const detail = err?.details ? ` Detalhe: ${err.details}` : "";
-    const hint = err?.hint ? ` Dica: ${err.hint}` : "";
-    return `${message}${detail}${hint}`;
-  }
-  return "Erro ao criar organizacao";
+function formatDbError(err: any): string {
+  // Legacy helper, keeping for compatibility if needed inside try/catch but mostly replaced
+  return err.message || "Erro desconhecido";
 }
