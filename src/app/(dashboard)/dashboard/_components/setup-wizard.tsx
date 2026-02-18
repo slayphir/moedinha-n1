@@ -39,6 +39,7 @@ import {
     CommandItem,
     CommandList,
 } from "@/components/ui/command";
+import { useToast } from "@/components/ui/use-toast";
 import {
     Popover,
     PopoverContent,
@@ -163,6 +164,7 @@ const XP_VALUES = {
 // LEVELS and getLevel come from @/lib/gamification
 
 export function SetupWizard({ orgId, existingAccounts, existingCategories }: SetupWizardProps) {
+    const { toast } = useToast();
     const router = useRouter();
     const [step, setStep] = useState(0);
     const [direction, setDirection] = useState<"next" | "prev">("next");
@@ -351,7 +353,18 @@ export function SetupWizard({ orgId, existingAccounts, existingCategories }: Set
 
     const finishSetup = async () => {
         setLoading(true);
-        await completeSetup(orgId);
+        const result = await completeSetup(orgId);
+
+        if (result?.error) {
+            toast({
+                title: "Erro ao finalizar",
+                description: result.error,
+                variant: "destructive"
+            });
+            setLoading(false);
+            return;
+        }
+
         setDone(true);
         setLoading(false);
 
@@ -364,8 +377,9 @@ export function SetupWizard({ orgId, existingAccounts, existingCategories }: Set
         });
 
         setTimeout(() => {
-            router.refresh();
-        }, 2500);
+            // Force hard navigation to ensure we exit the wizard
+            window.location.href = "/dashboard";
+        }, 2000);
     };
 
     const currentStep = STEPS[step];
