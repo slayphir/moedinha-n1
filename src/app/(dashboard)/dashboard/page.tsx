@@ -7,7 +7,7 @@ import { computeMonthlyMetrics } from "@/lib/distribution/metrics";
 import { getGoals } from "@/app/actions/goals";
 import { getSetupData } from "@/app/actions/complete-setup";
 
-export const revalidate = 60;
+
 
 export default async function DashboardPage({
   searchParams,

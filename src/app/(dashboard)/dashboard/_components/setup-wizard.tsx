@@ -29,13 +29,30 @@ import {
     PartyPopper,
     X,
     Minus,
+    ChevronsUpDown,
 } from "lucide-react";
+import {
+    Command,
+    CommandEmpty,
+    CommandGroup,
+    CommandInput,
+    CommandItem,
+    CommandList,
+} from "@/components/ui/command";
+import {
+    Popover,
+    PopoverContent,
+    PopoverTrigger,
+} from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
+import { BRAZILIAN_BANKS } from "@/lib/constants/banks";
 import { createAccount, deleteAccount } from "@/app/actions/accounts";
 import { createGoal } from "@/app/actions/goals";
 import { createDefaultDistribution } from "@/app/actions/distribution";
 import { completeSetup, createCategory, deleteCategory } from "@/app/actions/complete-setup";
 import { getLevel } from "@/lib/gamification";
 import confetti from "canvas-confetti";
+import { CurrencyInput } from "@/components/ui/currency-input";
 
 type SetupAccount = { id: string; name: string; type: string; is_credit_card: boolean };
 type SetupCategory = { id: string; name: string; type: string };
@@ -45,6 +62,58 @@ type SetupWizardProps = {
     existingAccounts: SetupAccount[];
     existingCategories: SetupCategory[];
 };
+
+
+
+function BankCombobox({ value, onSelect }: { value: string; onSelect: (val: string) => void }) {
+    const [open, setOpen] = useState(false);
+
+    return (
+        <Popover open={open} onOpenChange={setOpen}>
+            <PopoverTrigger asChild>
+                <Button
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={open}
+                    className="w-full justify-between font-normal text-ink"
+                >
+                    {value
+                        ? BRAZILIAN_BANKS.find((bank) => bank.name === value)?.name || value
+                        : "Selecione o banco..."}
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[300px] p-0" align="start">
+                <Command>
+                    <CommandInput placeholder="Buscar banco..." />
+                    <CommandList>
+                        <CommandEmpty>Banco não encontrado.</CommandEmpty>
+                        <CommandGroup className="max-h-[300px] overflow-auto">
+                            {BRAZILIAN_BANKS.map((bank) => (
+                                <CommandItem
+                                    key={bank.code}
+                                    value={bank.name}
+                                    onSelect={(currentValue) => {
+                                        onSelect(currentValue === value ? "" : currentValue);
+                                        setOpen(false);
+                                    }}
+                                >
+                                    <Check
+                                        className={cn(
+                                            "mr-2 h-4 w-4",
+                                            value === bank.name ? "opacity-100" : "opacity-0"
+                                        )}
+                                    />
+                                    {bank.name}
+                                </CommandItem>
+                            ))}
+                        </CommandGroup>
+                    </CommandList>
+                </Command>
+            </PopoverContent>
+        </Popover>
+    );
+}
 
 const STEPS = [
     { id: "welcome", label: "Boas-vindas", icon: Sparkles, emoji: "👋" },
@@ -121,7 +190,7 @@ export function SetupWizard({ orgId, existingAccounts, existingCategories }: Set
     // Goal state
     const [goalName, setGoalName] = useState("");
     const [goalAmount, setGoalAmount] = useState("");
-    const [goalType, setGoalType] = useState<"savings" | "purchase">("savings");
+    const [goalType, setGoalType] = useState<"savings" | "purchase" | "investment" | "travel" | "debt" | "emergency_fund" | "other">("savings");
 
     // Done state
     const [done, setDone] = useState(false);
@@ -484,31 +553,44 @@ export function SetupWizard({ orgId, existingAccounts, existingCategories }: Set
                                 </div>
 
                                 {/* Custom account */}
-                                <div className="flex gap-2">
-                                    <Input
-                                        value={newAccountName}
-                                        onChange={(e) => setNewAccountName(e.target.value)}
-                                        placeholder="Outra conta..."
-                                        className="flex-1"
-                                    />
-                                    <Select value={newAccountType} onValueChange={setNewAccountType}>
-                                        <SelectTrigger className="w-36">
-                                            <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="bank">Banco</SelectItem>
-                                            <SelectItem value="cash">Dinheiro</SelectItem>
-                                            <SelectItem value="credit_card">Cartão</SelectItem>
-                                            <SelectItem value="savings">Poupança</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                    <Button
-                                        size="sm"
-                                        disabled={!newAccountName.trim() || loading}
-                                        onClick={handleAddCustomAccount}
-                                    >
-                                        <Plus className="h-4 w-4" />
-                                    </Button>
+                                <div className="flex flex-col gap-2 sm:flex-row">
+                                    {newAccountType === "bank" ? (
+                                        <div className="flex-1 relative">
+                                            <BankCombobox
+                                                value={newAccountName}
+                                                onSelect={(name) => setNewAccountName(name)}
+                                            />
+                                        </div>
+                                    ) : (
+                                        <Input
+                                            value={newAccountName}
+                                            onChange={(e) => setNewAccountName(e.target.value)}
+                                            placeholder="Nome da conta..."
+                                            className="flex-1"
+                                        />
+                                    )}
+
+                                    <div className="flex gap-2">
+                                        <Select value={newAccountType} onValueChange={setNewAccountType}>
+                                            <SelectTrigger className="w-36">
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="bank">Banco</SelectItem>
+                                                <SelectItem value="cash">Dinheiro</SelectItem>
+                                                <SelectItem value="credit_card">Cartão</SelectItem>
+                                                <SelectItem value="savings">Poupança</SelectItem>
+                                                <SelectItem value="investment">Investimento</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                        <Button
+                                            size="icon"
+                                            disabled={!newAccountName.trim() || loading}
+                                            onClick={handleAddCustomAccount}
+                                        >
+                                            <Plus className="h-4 w-4" />
+                                        </Button>
+                                    </div>
                                 </div>
 
                                 {accounts.length > 0 && (
@@ -763,15 +845,19 @@ export function SetupWizard({ orgId, existingAccounts, existingCategories }: Set
                                             <SelectContent>
                                                 <SelectItem value="savings">💰 Poupança</SelectItem>
                                                 <SelectItem value="purchase">🛍️ Compra</SelectItem>
+                                                <SelectItem value="investment">📈 Investimento</SelectItem>
+                                                <SelectItem value="travel">✈️ Viagem</SelectItem>
+                                                <SelectItem value="debt">💸 Dívida</SelectItem>
+                                                <SelectItem value="emergency_fund">🆘 Reserva de Emergência</SelectItem>
+                                                <SelectItem value="other">📦 Outro</SelectItem>
                                             </SelectContent>
                                         </Select>
                                     </div>
                                     <div className="space-y-2">
                                         <Label>Valor alvo (opcional)</Label>
-                                        <Input
-                                            type="number"
+                                        <CurrencyInput
                                             value={goalAmount}
-                                            onChange={(e) => setGoalAmount(e.target.value)}
+                                            onChange={(val) => setGoalAmount(val)}
                                             placeholder="R$ 5.000,00"
                                         />
                                     </div>

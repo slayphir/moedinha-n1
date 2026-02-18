@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getActiveOrgIdForUser } from "@/lib/active-org";
 import { revalidatePath } from "next/cache";
 
-export type GoalType = "savings" | "emergency_fund" | "debt" | "reduction" | "purchase" | "piggy_bank";
+export type GoalType = "savings" | "emergency_fund" | "debt" | "reduction" | "purchase" | "piggy_bank" | "investment" | "travel" | "education" | "vehicle" | "home" | "other";
 export type GoalStatus = "active" | "completed" | "paused" | "cancelled";
 export type FundingStrategy = "bucket_fraction" | "month_leftover" | "fixed_amount" | "manual";
 
