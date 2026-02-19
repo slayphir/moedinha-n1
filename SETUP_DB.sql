@@ -804,3 +804,71 @@ CREATE POLICY "contacts_update" ON contacts FOR UPDATE
 
 CREATE POLICY "contacts_delete" ON contacts FOR DELETE
   USING (public.can_write_org(org_id));
+
+-- ============================================================
+-- MIGRATION: 00010_setup_wizard_fields.sql
+-- ============================================================
+
+-- Add setup_completed to orgs
+ALTER TABLE orgs ADD COLUMN IF NOT EXISTS setup_completed BOOLEAN DEFAULT false;
+
+-- ============================================================
+-- MIGRATION: 00010_transactions_optional_fields.sql
+-- ============================================================
+
+-- Add optional fields used by transaction form and reports.
+-- Safe to run multiple times.
+
+ALTER TABLE transactions
+  ADD COLUMN IF NOT EXISTS due_date DATE;
+
+ALTER TABLE transactions
+  ADD COLUMN IF NOT EXISTS installment_id UUID;
+
+ALTER TABLE transactions
+  ADD COLUMN IF NOT EXISTS contact_id UUID;
+
+DO $$
+BEGIN
+  IF to_regclass('public.contacts') IS NOT NULL
+     AND NOT EXISTS (
+       SELECT 1
+       FROM pg_constraint
+       WHERE conname = 'transactions_contact_id_fkey'
+     ) THEN
+    ALTER TABLE transactions
+      ADD CONSTRAINT transactions_contact_id_fkey
+      FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE SET NULL;
+  END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_transactions_due_date
+  ON transactions(org_id, due_date)
+  WHERE deleted_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_transactions_installment_id
+  ON transactions(org_id, installment_id)
+  WHERE deleted_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_transactions_contact_id
+  ON transactions(org_id, contact_id)
+  WHERE deleted_at IS NULL;
+
+-- ============================================================
+-- MIGRATION: 00011_add_contact_id_to_transactions.sql
+-- ============================================================
+
+-- Add contact_id to transactions table
+ALTER TABLE transactions 
+ADD COLUMN IF NOT EXISTS contact_id UUID REFERENCES contacts(id) ON DELETE SET NULL;
+
+CREATE INDEX IF NOT EXISTS idx_transactions_contact ON transactions(contact_id);
+
+-- ============================================================
+-- MIGRATION: 00012_balance_start_date.sql
+-- ============================================================
+
+-- Define a data inicial de saldo para evitar contabilizar retroativos no card.
+-- Quando preenchida, o card de saldo considera apenas movimentacoes a partir desta data.
+ALTER TABLE orgs
+  ADD COLUMN IF NOT EXISTS balance_start_date DATE;

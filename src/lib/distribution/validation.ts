@@ -68,9 +68,49 @@ export function autoBalanceOnEdit(
   newBps: number,
   strategy: AutoBalanceStrategy
 ): BucketInput[] {
+  if (strategy === "flexible") {
+    const editedExists = buckets.some((bucket) => bucket.id === editedId);
+    if (!editedExists) return buckets.map((bucket) => ({ ...bucket }));
+
+    const clampedEdited = Math.max(0, Math.min(TOTAL_BPS, newBps));
+    const flexibleTarget =
+      buckets.find((bucket) => bucket.id !== editedId && bucket.is_flexible) ??
+      buckets.find((bucket) => bucket.id !== editedId);
+
+    if (!flexibleTarget) {
+      return buckets.map((bucket) =>
+        bucket.id === editedId ? { ...bucket, percent_bps: clampedEdited } : { ...bucket }
+      );
+    }
+
+    const fixedSum = buckets
+      .filter((bucket) => bucket.id !== editedId && bucket.id !== flexibleTarget.id)
+      .reduce((sum, bucket) => sum + bucket.percent_bps, 0);
+
+    let nextEdited = clampedEdited;
+    let nextFlexible = TOTAL_BPS - fixedSum - nextEdited;
+
+    if (nextFlexible < 0) {
+      nextFlexible = 0;
+      nextEdited = TOTAL_BPS - fixedSum;
+    } else if (nextFlexible > TOTAL_BPS) {
+      nextFlexible = TOTAL_BPS;
+      nextEdited = TOTAL_BPS - fixedSum - nextFlexible;
+    }
+
+    nextEdited = Math.max(0, Math.min(TOTAL_BPS, nextEdited));
+    nextFlexible = Math.max(0, Math.min(TOTAL_BPS, nextFlexible));
+
+    return buckets.map((bucket) => {
+      if (bucket.id === editedId) return { ...bucket, percent_bps: nextEdited };
+      if (bucket.id === flexibleTarget.id) return { ...bucket, percent_bps: nextFlexible };
+      return { ...bucket };
+    });
+  }
+
   const others = buckets.filter((b) => b.id !== editedId);
   const sumOthers = others.reduce((s, b) => s + b.percent_bps, 0);
-  let delta = TOTAL_BPS - (sumOthers + newBps);
+  const delta = TOTAL_BPS - (sumOthers + newBps);
 
   const result = buckets.map((b) => {
     if (b.id === editedId) {
@@ -83,32 +123,13 @@ export function autoBalanceOnEdit(
     return result;
   }
 
-  if (strategy === "flexible") {
-    const flexible = others.find((o) => o.is_flexible);
-    if (flexible) {
-      const idx = result.findIndex((b) => b.id === flexible.id);
-      if (idx !== -1) {
-        result[idx].percent_bps = Math.max(0, result[idx].percent_bps + delta);
-      }
-    } else {
-      // fallback: proporcional
-      const totalOther = sumOthers;
-      others.forEach((o) => {
-        const idx = result.findIndex((b) => b.id === o.id);
-        if (idx !== -1 && totalOther > 0) {
-          result[idx].percent_bps = Math.round(o.percent_bps + (o.percent_bps / totalOther) * delta);
-        }
-      });
+  const totalOther = sumOthers;
+  others.forEach((o) => {
+    const idx = result.findIndex((b) => b.id === o.id);
+    if (idx !== -1 && totalOther > 0) {
+      result[idx].percent_bps = Math.round(o.percent_bps + (o.percent_bps / totalOther) * delta);
     }
-  } else {
-    const totalOther = sumOthers;
-    others.forEach((o) => {
-      const idx = result.findIndex((b) => b.id === o.id);
-      if (idx !== -1 && totalOther > 0) {
-        result[idx].percent_bps = Math.round(o.percent_bps + (o.percent_bps / totalOther) * delta);
-      }
-    });
-  }
+  });
 
   // Ajuste de arredondamento no último bucket para soma exata
   const currentSum = result.reduce((s, b) => s + b.percent_bps, 0);

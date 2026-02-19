@@ -16,6 +16,7 @@ export const transactionSchema = z
 
     isInstallment: z.boolean().default(false),
     installments: z.coerce.number().min(2, "Minimo de 2 parcelas").optional().nullable(),
+    installmentInputType: z.enum(["total", "installment"]).default("total"),
 
     isRecurring: z.boolean().default(false),
     frequency: z.enum(["daily", "weekly", "monthly", "yearly"]).optional().nullable(),

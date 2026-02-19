@@ -55,6 +55,7 @@ export default async function ConfiguracoesPage() {
                 <CardContent>
                   <OrgSettingsForm
                     initialName={org.name}
+                    initialBalanceStartDate={org.balance_start_date}
                     orgId={org.id}
                   />
                 </CardContent>

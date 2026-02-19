@@ -1,9 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { AnimatedNumber } from "@/components/ui/animated-number";
 import { formatCurrency } from "@/lib/utils";
 import {
@@ -66,6 +68,8 @@ type RisingCategory = {
 import { calcXP, getLevel } from "@/lib/gamification";
 import type { GamificationStats } from "@/lib/gamification";
 
+type DashboardFilterPreset = "day" | "7d" | "30d" | "month" | "custom";
+
 type DashboardClientProps = {
   saldoOrbita: number;
   receitasMes: number;
@@ -82,6 +86,11 @@ type DashboardClientProps = {
   pendingCount: number;
   pendingPct: number;
   goals: Goal[];
+  filter: {
+    preset: DashboardFilterPreset;
+    start: string;
+    end: string;
+  };
   gamification: GamificationStats;
 };
 
@@ -123,7 +132,7 @@ function goalEtaLabel(goal: Goal): string {
 }
 
 function resolveAlertHref(alertCode: string): string {
-  if (alertCode.startsWith("pending")) return "/dashboard/lancamentos";
+  if (alertCode.startsWith("pending")) return "/dashboard/lancamentos?focus=pending-bucket";
   if (alertCode.startsWith("bucket") || alertCode.startsWith("pace") || alertCode.startsWith("projection")) {
     return "/dashboard/distribuicao";
   }
@@ -145,6 +154,11 @@ function shortDateLabel(value: string): string {
   return value;
 }
 
+function formatRangeDate(isoDate: string): string {
+  if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(isoDate)) return isoDate;
+  return `${isoDate.slice(8, 10)}/${isoDate.slice(5, 7)}/${isoDate.slice(0, 4)}`;
+}
+
 export function DashboardClient({
   saldoOrbita,
   receitasMes,
@@ -161,11 +175,51 @@ export function DashboardClient({
   pendingCount,
   pendingPct,
   goals,
+  filter,
   gamification,
 }: DashboardClientProps) {
+  const router = useRouter();
+  const pathname = usePathname();
   const xp = calcXP(gamification);
   const { level: currentLevel, index: levelIndex, next: nextLevel, pct: levelPct } = getLevel(xp);
   const [categoryView, setCategoryView] = useState<"value" | "percent">("value");
+  const [customStart, setCustomStart] = useState(filter.start);
+  const [customEnd, setCustomEnd] = useState(filter.end);
+
+  useEffect(() => {
+    setCustomStart(filter.start);
+    setCustomEnd(filter.end);
+  }, [filter.start, filter.end, filter.preset]);
+
+  function navigateWithPreset(nextPreset: DashboardFilterPreset, start?: string, end?: string) {
+    const params = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
+
+    if (nextPreset === "month") {
+      params.delete("preset");
+    } else {
+      params.set("preset", nextPreset);
+    }
+
+    if (nextPreset === "custom" && start && end) {
+      params.set("start", start);
+      params.set("end", end);
+    } else {
+      params.delete("start");
+      params.delete("end");
+    }
+
+    const query = params.toString();
+    router.push(query ? `${pathname}?${query}` : pathname);
+  }
+
+  function applyCustomRange() {
+    if (!customStart || !customEnd) return;
+    if (customStart <= customEnd) {
+      navigateWithPreset("custom", customStart, customEnd);
+      return;
+    }
+    navigateWithPreset("custom", customEnd, customStart);
+  }
 
   const paceIdealTotal = monthSnapshot ? monthSnapshot.total_budget * monthSnapshot.day_ratio : 0;
   const projectionTotal =
@@ -210,7 +264,7 @@ export function DashboardClient({
         severity: pendingPct >= 10 ? "warn" : "info",
         message: `${pendingCount} lancamento(s) sem bucket (${pendingPct.toFixed(1)}% das despesas).`,
         cta: "Categorizar pendentes",
-        href: "/dashboard/lancamentos",
+        href: "/dashboard/lancamentos?focus=pending-bucket",
         created_at: new Date().toISOString(),
       });
     }
@@ -268,6 +322,67 @@ export function DashboardClient({
             </div>
           </div>
         </div>
+      </section>
+
+      <section className="animate-fade-in-up rounded-xl border border-stroke/60 bg-paper/80 p-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-semibold uppercase tracking-wide text-ink/70">Periodo</span>
+          <Button
+            size="sm"
+            variant={filter.preset === "day" ? "default" : "outline"}
+            onClick={() => navigateWithPreset("day")}
+          >
+            Dia
+          </Button>
+          <Button
+            size="sm"
+            variant={filter.preset === "7d" ? "default" : "outline"}
+            onClick={() => navigateWithPreset("7d")}
+          >
+            7d
+          </Button>
+          <Button
+            size="sm"
+            variant={filter.preset === "30d" ? "default" : "outline"}
+            onClick={() => navigateWithPreset("30d")}
+          >
+            30d
+          </Button>
+          <Button
+            size="sm"
+            variant={filter.preset === "month" ? "default" : "outline"}
+            onClick={() => navigateWithPreset("month")}
+          >
+            Mes
+          </Button>
+          <Button
+            size="sm"
+            variant={filter.preset === "custom" ? "default" : "outline"}
+            onClick={() => navigateWithPreset("custom", customStart, customEnd)}
+          >
+            Personalizado
+          </Button>
+        </div>
+
+        {filter.preset === "custom" && (
+          <div className="mt-3 flex flex-wrap items-end gap-2">
+            <div className="space-y-1">
+              <label className="text-xs text-ink/70">Inicio</label>
+              <Input type="date" value={customStart} onChange={(event) => setCustomStart(event.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs text-ink/70">Fim</label>
+              <Input type="date" value={customEnd} onChange={(event) => setCustomEnd(event.target.value)} />
+            </div>
+            <Button size="sm" onClick={applyCustomRange}>
+              Aplicar
+            </Button>
+          </div>
+        )}
+
+        <p className="mt-3 text-xs text-ink/70">
+          Exibindo de {formatRangeDate(filter.start)} ate {formatRangeDate(filter.end)}.
+        </p>
       </section>
 
       <GoalFundingWidget />
@@ -442,7 +557,7 @@ export function DashboardClient({
               <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink/70">Resolver agora</p>
               <div className="flex flex-wrap gap-2">
                 <Button asChild size="sm" variant="outline">
-                  <Link href="/dashboard/lancamentos">Categorizar pendentes</Link>
+                  <Link href="/dashboard/lancamentos?focus=pending-bucket">Categorizar pendentes</Link>
                 </Button>
                 <Button asChild size="sm" variant="outline">
                   <Link href="/dashboard/distribuicao">Definir teto</Link>
@@ -632,4 +747,3 @@ export function DashboardClient({
     </div>
   );
 }
-

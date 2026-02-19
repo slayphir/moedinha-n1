@@ -80,7 +80,7 @@ export function CSVExporter() {
           amount,
           type,
           status,
-          account:accounts(name),
+          account:accounts!transactions_account_id_fkey(name),
           category:categories(name)
         `)
                 .eq("org_id", orgId)

@@ -3,6 +3,9 @@ import { redirect } from "next/navigation";
 import { getInvoiceData, getAvailableInvoices } from "@/app/actions/invoices";
 import { InvoiceView } from "@/app/(dashboard)/dashboard/faturas/_components/invoice-view";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 interface CreditCardInvoicePageProps {
     params: {
         id: string;
@@ -47,10 +50,19 @@ export default async function CreditCardInvoicePage({ params, searchParams }: Cr
     const currentMonth = today.getMonth();
     const currentYear = today.getFullYear();
 
-    const selectedMonth = searchParams.month ? parseInt(searchParams.month) : currentMonth;
-    const selectedYear = searchParams.year ? parseInt(searchParams.year) : currentYear;
+    let selectedMonth = currentMonth;
+    let selectedYear = currentYear;
 
-    const invoiceData = await getInvoiceData(params.id, selectedMonth, selectedYear);
+    if (searchParams.month && searchParams.month.includes("-")) {
+        const [y, m] = searchParams.month.split("-");
+        selectedYear = parseInt(y);
+        selectedMonth = parseInt(m) - 1; // 0-indexed
+    } else {
+        if (searchParams.month) selectedMonth = parseInt(searchParams.month);
+        if (searchParams.year) selectedYear = parseInt(searchParams.year);
+    }
+
+    const invoiceData = await getInvoiceData(params.id, selectedYear, selectedMonth);
     const availableInvoices = await getAvailableInvoices(params.id);
 
     if (!invoiceData || 'error' in invoiceData) {

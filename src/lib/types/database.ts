@@ -6,6 +6,7 @@ export interface Org {
   id: string;
   name: string;
   slug: string;
+  balance_start_date: string | null;
   telegram_config: {
     chat_id: string;
     is_active: boolean;

@@ -1,0 +1,151 @@
+{
+  "orgs": [
+    {
+      "id": "3a1f472a-991a-416d-81ba-780c012f0192",
+      "name": "Teste",
+      "created_at": "2026-02-18T12:30:51.807059+00:00"
+    },
+    {
+      "id": "ca16a712-dbaa-4339-a85c-712c5f92e011",
+      "name": "Araújo",
+      "created_at": "2026-02-18T13:43:44.133942+00:00"
+    },
+    {
+      "id": "f15bbf6a-c13f-4a44-9ed1-35357381d3bd",
+      "name": "Yozoraz Fortune",
+      "created_at": "2026-02-18T14:15:30.731771+00:00"
+    },
+    {
+      "id": "4699b36b-59e1-4f7d-a914-d1bd7142d36f",
+      "name": "Caixa Forte",
+      "created_at": "2026-02-18T12:15:07.787374+00:00"
+    }
+  ],
+  "members": [
+    {
+      "user_id": "77e92a33-35b5-4669-8006-021df68a2dda",
+      "org_id": "4699b36b-59e1-4f7d-a914-d1bd7142d36f",
+      "role": "admin",
+      "created_at": "2026-02-18T12:15:07.787374+00:00"
+    },
+    {
+      "user_id": "6860e512-3608-4229-a755-fdc9bcb56fee",
+      "org_id": "3a1f472a-991a-416d-81ba-780c012f0192",
+      "role": "admin",
+      "created_at": "2026-02-18T12:30:51.807059+00:00"
+    },
+    {
+      "user_id": "581c3736-af66-4d46-a864-cf64cd25c188",
+      "org_id": "ca16a712-dbaa-4339-a85c-712c5f92e011",
+      "role": "admin",
+      "created_at": "2026-02-18T13:43:44.133942+00:00"
+    },
+    {
+      "user_id": "4f1e8ebb-a74b-4610-8bd7-e868dfcb161d",
+      "org_id": "f15bbf6a-c13f-4a44-9ed1-35357381d3bd",
+      "role": "admin",
+      "created_at": "2026-02-18T14:15:30.731771+00:00"
+    }
+  ],
+  "txPerOrg": {
+    "4699b36b-59e1-4f7d-a914-d1bd7142d36f": 6
+  },
+  "accounts": [
+    {
+      "org_id": "4699b36b-59e1-4f7d-a914-d1bd7142d36f",
+      "name": "Conta Principal",
+      "is_credit_card": false,
+      "id": "4b18bb81-8ece-43a0-b35e-90e0b9a1faf0"
+    },
+    {
+      "org_id": "3a1f472a-991a-416d-81ba-780c012f0192",
+      "name": "Conta Principal",
+      "is_credit_card": false,
+      "id": "9cd992c9-4da1-4820-8002-97f9cc163f92"
+    },
+    {
+      "org_id": "ca16a712-dbaa-4339-a85c-712c5f92e011",
+      "name": "Conta Principal",
+      "is_credit_card": false,
+      "id": "bbea96b4-5368-4065-99b7-8d5b9aafeca4"
+    },
+    {
+      "org_id": "ca16a712-dbaa-4339-a85c-712c5f92e011",
+      "name": "Conta Digital",
+      "is_credit_card": false,
+      "id": "1e7251a3-ccba-4ce2-a055-332f53d7ab8c"
+    },
+    {
+      "org_id": "f15bbf6a-c13f-4a44-9ed1-35357381d3bd",
+      "name": "Conta Principal",
+      "is_credit_card": false,
+      "id": "42ecb77a-cf2d-4c7c-bf7b-a18da102bb43"
+    },
+    {
+      "org_id": "f15bbf6a-c13f-4a44-9ed1-35357381d3bd",
+      "name": "Conta Corrente",
+      "is_credit_card": false,
+      "id": "ab0b8045-911b-45ae-adda-c1aaa24de973"
+    },
+    {
+      "org_id": "f15bbf6a-c13f-4a44-9ed1-35357381d3bd",
+      "name": "Cartão de Crédito",
+      "is_credit_card": true,
+      "id": "6b11b189-86fc-44e3-83d5-e209e9d570e6"
+    },
+    {
+      "org_id": "f15bbf6a-c13f-4a44-9ed1-35357381d3bd",
+      "name": "Carteira / Dinheiro",
+      "is_credit_card": false,
+      "id": "e578443c-a231-4b87-914d-092eaddc7314"
+    },
+    {
+      "org_id": "f15bbf6a-c13f-4a44-9ed1-35357381d3bd",
+      "name": "Conta Salário",
+      "is_credit_card": false,
+      "id": "3d6334c0-69b9-4ab2-8ee7-5fb2fe18bbc9"
+    },
+    {
+      "org_id": "f15bbf6a-c13f-4a44-9ed1-35357381d3bd",
+      "name": "Conta Digital",
+      "is_credit_card": false,
+      "id": "e6fe4fc5-2f15-40ff-a342-14c7961f62a0"
+    },
+    {
+      "org_id": "4699b36b-59e1-4f7d-a914-d1bd7142d36f",
+      "name": "Nubank",
+      "is_credit_card": false,
+      "id": "492983de-2f45-466f-b1a2-da2faf3b4fce"
+    },
+    {
+      "org_id": "4699b36b-59e1-4f7d-a914-d1bd7142d36f",
+      "name": "Inter",
+      "is_credit_card": false,
+      "id": "59f4599d-dfba-44e2-95cb-7122a5a18bc0"
+    },
+    {
+      "org_id": "4699b36b-59e1-4f7d-a914-d1bd7142d36f",
+      "name": "Mercado Pago",
+      "is_credit_card": false,
+      "id": "74f319c3-ee9c-4cb7-9c9a-06e86b000f6f"
+    },
+    {
+      "org_id": "4699b36b-59e1-4f7d-a914-d1bd7142d36f",
+      "name": "Santander",
+      "is_credit_card": false,
+      "id": "245e2d37-88c1-4fbb-b5d4-a971663fce32"
+    },
+    {
+      "org_id": "4699b36b-59e1-4f7d-a914-d1bd7142d36f",
+      "name": "Neon",
+      "is_credit_card": false,
+      "id": "60ff7bd8-4955-4c8e-b620-71463ff84bef"
+    },
+    {
+      "org_id": "4699b36b-59e1-4f7d-a914-d1bd7142d36f",
+      "name": "Neon",
+      "is_credit_card": true,
+      "id": "afff4513-0dee-4fbf-9e75-a9b0c29388a9"
+    }
+  ]
+}

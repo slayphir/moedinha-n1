@@ -11,6 +11,15 @@ export type UpsertBudgetInput = {
   alertThreshold: number; // percentual (0-100)
 };
 
+export type UpsertBudgetBatchInput = {
+  month: string; // YYYY-MM-01
+  items: Array<{
+    categoryId: string;
+    amount: number;
+    alertThreshold: number; // percentual (0-100)
+  }>;
+};
+
 async function getOrgIdFromSession() {
   const supabase = await createClient();
   const {
@@ -56,6 +65,63 @@ export async function upsertCategoryBudget(input: UpsertBudgetInput): Promise<{ 
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/cadastros");
   return {};
+}
+
+export async function upsertCategoryBudgetsBatch(input: UpsertBudgetBatchInput): Promise<{ error?: string; count?: number }> {
+  const { supabase, orgId, error } = await getOrgIdFromSession();
+  if (error || !orgId) return { error: error ?? "Organizacao nao encontrada" };
+
+  if (!Array.isArray(input.items) || input.items.length === 0) {
+    return { error: "Nenhum item informado." };
+  }
+
+  const deduped = new Map<string, { amount: number; alertThreshold: number }>();
+  for (const item of input.items) {
+    if (!item?.categoryId) continue;
+    deduped.set(item.categoryId, {
+      amount: Number(item.amount),
+      alertThreshold: Number(item.alertThreshold),
+    });
+  }
+
+  if (deduped.size === 0) {
+    return { error: "Nenhuma categoria valida para salvar." };
+  }
+
+  const rows: Array<{
+    org_id: string;
+    category_id: string;
+    month: string;
+    amount: number;
+    alert_threshold: number;
+  }> = [];
+
+  for (const [categoryId, values] of deduped.entries()) {
+    if (!Number.isFinite(values.amount) || values.amount <= 0) {
+      return { error: `Valor invalido para categoria ${categoryId}.` };
+    }
+    if (!Number.isFinite(values.alertThreshold) || values.alertThreshold < 0 || values.alertThreshold > 100) {
+      return { error: `Threshold invalido para categoria ${categoryId}.` };
+    }
+
+    rows.push({
+      org_id: orgId,
+      category_id: categoryId,
+      month: input.month,
+      amount: values.amount,
+      alert_threshold: values.alertThreshold,
+    });
+  }
+
+  const { error: upsertError } = await supabase.from("budgets").upsert(rows, {
+    onConflict: "org_id,category_id,month",
+  });
+
+  if (upsertError) return { error: upsertError.message };
+
+  revalidatePath("/dashboard");
+  revalidatePath("/dashboard/cadastros");
+  return { count: rows.length };
 }
 
 export async function deleteCategoryBudget(input: {
@@ -116,7 +182,19 @@ export async function getBudgetOverview(orgId: string, monthStr: string) {
   // Actually, user might want to see ONLY defined budgets, or ALL categories to add budgets.
   // Let's return a list of defined budgets + a list of categories without budgets could be useful for UI.
 
-  const budgetMap: Record<string, any> = {};
+  type BudgetOverviewRow = {
+    id: string;
+    categoryId: string;
+    categoryName: string;
+    amount: number;
+    alert_threshold: number;
+    spent: number;
+    usage_pct: number;
+    near_limit: boolean;
+    over_limit: boolean;
+  };
+
+  const budgetMap: Record<string, BudgetOverviewRow> = {};
 
   (budgets.data ?? []).forEach((row) => {
     const cat = categories.data?.find(c => c.id === row.category_id);

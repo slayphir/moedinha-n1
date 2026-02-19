@@ -35,7 +35,11 @@ export default async function CadastrosPage({
       .select("id, name, type, is_active, is_credit_card, credit_limit, closing_day, due_day")
       .eq("org_id", orgId)
       .order("name"),
-    supabase.from("categories").select("id, name, type").eq("org_id", orgId).order("name"),
+    supabase
+      .from("categories")
+      .select("id, name, type, default_bucket_id, default_bucket:distribution_buckets(name)")
+      .eq("org_id", orgId)
+      .order("name"),
     supabase.from("tags").select("id, name").eq("org_id", orgId).order("name"),
     supabase.from("contacts").select("*").eq("org_id", orgId).order("name"),
     supabase
@@ -57,6 +61,18 @@ export default async function CadastrosPage({
   (txMonth.data ?? []).forEach((row) => {
     if (!row.category_id) return;
     spentByCategory[row.category_id] = (spentByCategory[row.category_id] ?? 0) + Math.abs(Number(row.amount));
+  });
+
+  const normalizedCategories = (categories.data ?? []).map((category) => {
+    const relation = (category as { default_bucket?: { name?: string } | Array<{ name?: string }> | null }).default_bucket;
+    const bucketName = Array.isArray(relation) ? relation[0]?.name ?? null : relation?.name ?? null;
+    return {
+      id: category.id,
+      name: category.name,
+      type: category.type,
+      default_bucket_id: category.default_bucket_id,
+      default_bucket_name: bucketName,
+    };
   });
 
   const budgetMap: Record<
@@ -96,12 +112,13 @@ export default async function CadastrosPage({
   return (
     <CadastrosClient
       accounts={accounts.data ?? []}
-      categories={categories.data ?? []}
+      categories={normalizedCategories}
       tags={tags.data ?? []}
       contacts={contacts.data ?? []}
       initialTab={tab}
       budgetMonth={budgetMonth}
       categoryBudgetMap={budgetMap}
+      monthExpenseByCategory={spentByCategory}
     />
   );
 }

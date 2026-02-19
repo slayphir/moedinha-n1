@@ -3,15 +3,25 @@
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 
-export async function updateOrganization(orgId: string, name: string) {
+export async function updateOrganization(orgId: string, name: string, balanceStartDate?: string | null) {
     const supabase = await createClient();
 
-    // Check permissions (assuming any member can edit for now, or just admin)
-    // For simplicity in this MVP, we allow any member of the org to update it.
+    const payload: {
+        name: string;
+        updated_at: string;
+        balance_start_date?: string | null;
+    } = {
+        name,
+        updated_at: new Date().toISOString(),
+    };
+
+    if (balanceStartDate !== undefined) {
+        payload.balance_start_date = balanceStartDate;
+    }
 
     const { error } = await supabase
         .from("orgs")
-        .update({ name, updated_at: new Date().toISOString() })
+        .update(payload)
         .eq("id", orgId);
 
     if (error) return { error: error.message };

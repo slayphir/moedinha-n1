@@ -5,7 +5,7 @@ import { formatCurrency } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { InvoiceData } from "@/app/actions/invoices";
+import { InvoiceData, InvoiceTransaction } from "@/app/actions/invoices";
 import { addMonths, subMonths, format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
@@ -18,6 +18,8 @@ interface InvoiceViewProps {
 export function InvoiceView({ data, onMonthChange }: InvoiceViewProps) {
     const { account, invoice, transactions, period } = data;
     const [viewingMonth, setViewingMonth] = useState(new Date(period.year, period.month, 1));
+    const invoiceTotal = Math.max(Number(invoice.total) || 0, 0);
+    const availableLimit = Number(account.credit_limit || 0) - invoiceTotal;
 
     const handlePrevMonth = () => {
         const newDate = subMonths(viewingMonth, 1);
@@ -79,7 +81,7 @@ export function InvoiceView({ data, onMonthChange }: InvoiceViewProps) {
                         <CardTitle className="text-sm text-muted-foreground">Valor da Fatura</CardTitle>
                     </CardHeader>
                     <CardContent>
-                        <p className="text-2xl font-bold">{formatCurrency(Math.abs(invoice.total))}</p>
+                        <p className="text-2xl font-bold">{formatCurrency(invoiceTotal)}</p>
                         <p className="text-xs text-muted-foreground mt-1">
                             Vencimento: {format(new Date(invoice.dueDate), "dd/MM/yyyy")}
                         </p>
@@ -90,9 +92,8 @@ export function InvoiceView({ data, onMonthChange }: InvoiceViewProps) {
                         <CardTitle className="text-sm text-muted-foreground">Limite Disponível</CardTitle>
                     </CardHeader>
                     <CardContent>
-                        {/* Simple calculation, assumes total invoice is debt. Real implementation might need current balance from account */}
                         <p className="text-2xl font-bold text-emerald-600">
-                            {formatCurrency(account.credit_limit - Math.abs(invoice.total))}
+                            {formatCurrency(availableLimit)}
                         </p>
                         <p className="text-xs text-muted-foreground mt-1">
                             Limite Total: {formatCurrency(account.credit_limit)}
@@ -127,7 +128,7 @@ export function InvoiceView({ data, onMonthChange }: InvoiceViewProps) {
                         </div>
                     ) : (
                         <div className="space-y-4">
-                            {transactions.map((tx: any) => (
+                            {transactions.map((tx: InvoiceTransaction) => (
                                 <div key={tx.id} className="flex items-center justify-between py-2 border-b last:border-0 hover:bg-slate-50 px-2 rounded -mx-2">
                                     <div className="flex items-center gap-3">
                                         <div className="h-10 w-10 bg-slate-100 rounded-full flex items-center justify-center text-xl">
@@ -141,8 +142,8 @@ export function InvoiceView({ data, onMonthChange }: InvoiceViewProps) {
                                         </div>
                                     </div>
                                     <div className="text-right">
-                                        <p className={`font-semibold text-sm ${tx.amount < 0 ? "text-red-600" : "text-emerald-600"}`}>
-                                            {formatCurrency(Math.abs(tx.amount))}
+                                        <p className={`font-semibold text-sm ${tx.type === "expense" ? "text-red-600" : "text-emerald-600"}`}>
+                                            {formatCurrency((tx.type === "expense" ? -1 : 1) * Math.abs(Number(tx.amount) || 0))}
                                         </p>
                                         {tx.installments && (
                                             <p className="text-xs text-muted-foreground">

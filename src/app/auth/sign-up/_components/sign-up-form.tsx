@@ -18,31 +18,37 @@ export function SignUpForm() {
     setLoading(true);
     setMessage(null);
     const supabase = createClient();
-    
-    // Sign up with email/password
-    // Supabase sends a confirmation email by default
-    const { error } = await supabase.auth.signUp({ 
-      email, 
-      password,
-      options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback`
-      }
-    });
 
-    setLoading(false);
-    
-    if (error) {
-      setMessage({ type: "error", text: error.message });
-      return;
+    try {
+      // Supabase sends a confirmation email by default
+      const { error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth/callback`,
+        },
+      });
+
+      if (error) {
+        setMessage({ type: "error", text: error.message });
+        return;
+      }
+
+      setMessage({
+        type: "success",
+        text: "Cadastro realizado! Verifique seu e-mail para confirmar a conta.",
+      });
+    } catch (err) {
+      const text =
+        err instanceof Error && err.message
+          ? err.message
+          : "Falha de rede ao cadastrar. Verifique internet, URL do Supabase e Redirect URL permitida.";
+
+      console.error("[sign-up] unexpected error", err);
+      setMessage({ type: "error", text });
+    } finally {
+      setLoading(false);
     }
-    
-    setMessage({ 
-      type: "success", 
-      text: "Cadastro realizado! Verifique seu e-mail para confirmar a conta." 
-    });
-    
-    // Optional: Auto-login not possible until email confirmed usually, 
-    // unless "Enable Email Wait For Confirmation" is off in Supabase.
   }
 
   return (

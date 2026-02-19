@@ -19,7 +19,8 @@ export default async function DashboardLayout({
   const { data: members } = await supabase
     .from("org_members")
     .select("org_id")
-    .eq("user_id", user.id);
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: true }); // Ensure consistent order
   if (!members?.length) redirect("/onboarding");
 
   const orgId = members[0].org_id;

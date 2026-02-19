@@ -145,9 +145,13 @@ export function CSVImporter({ onSuccess }: { onSuccess?: () => void }) {
     const supabase = createClient();
 
     const categoriesByName = useMemo(() => {
-        const map = new Map<string, { id: string; type: string }>();
+        const map = new Map<string, { id: string; type: string; default_bucket_id?: string | null }>();
         for (const category of categories) {
-            map.set(stripAccents(category.name), { id: category.id, type: category.type });
+            map.set(stripAccents(category.name), {
+                id: category.id,
+                type: category.type,
+                default_bucket_id: category.default_bucket_id ?? null,
+            });
         }
         return map;
     }, [categories]);
@@ -227,6 +231,10 @@ export function CSVImporter({ onSuccess }: { onSuccess?: () => void }) {
                         maybeCategory && (maybeCategory.type === row.type || row.type === "transfer")
                             ? maybeCategory.id
                             : null;
+                    const bucketId =
+                        row.type !== "transfer" && categoryId
+                            ? maybeCategory?.default_bucket_id ?? null
+                            : null;
 
                     const { error } = await supabase.from("transactions").insert({
                         org_id: selectedAccount.org_id,
@@ -234,6 +242,7 @@ export function CSVImporter({ onSuccess }: { onSuccess?: () => void }) {
                         amount: row.amount,
                         type: row.type,
                         category_id: categoryId,
+                        bucket_id: bucketId,
                         account_id: defaultAccountId,
                         date: row.date,
                         status: "cleared",
@@ -337,4 +346,3 @@ export function CSVImporter({ onSuccess }: { onSuccess?: () => void }) {
         </Dialog>
     );
 }
-

@@ -1,0 +1,223 @@
+{
+  "totalInDb": 24,
+  "active": [
+    {
+      "id": "e99f9413-9240-45e9-abfc-5b19b5f8a843",
+      "description": "Curso Técnico (1/12)",
+      "amount": 5.56,
+      "date": "2026-02-18",
+      "status": "cleared",
+      "deleted_at": null,
+      "account_id": "afff4513-0dee-4fbf-9e75-a9b0c29388a9"
+    },
+    {
+      "id": "693ec505-26f8-4f18-8045-a06a90fbc0b6",
+      "description": "Curso Técnico (2/12)",
+      "amount": 5.56,
+      "date": "2026-03-18",
+      "status": "cleared",
+      "deleted_at": null,
+      "account_id": "afff4513-0dee-4fbf-9e75-a9b0c29388a9"
+    },
+    {
+      "id": "ab866552-0b37-402e-a4b2-feabe7025fdd",
+      "description": "Curso Técnico (3/12)",
+      "amount": 5.56,
+      "date": "2026-04-18",
+      "status": "cleared",
+      "deleted_at": null,
+      "account_id": "afff4513-0dee-4fbf-9e75-a9b0c29388a9"
+    },
+    {
+      "id": "55f1cd83-320a-4909-8fa6-f941d45ffc85",
+      "description": "Curso Técnico (4/12)",
+      "amount": 5.56,
+      "date": "2026-05-18",
+      "status": "cleared",
+      "deleted_at": null,
+      "account_id": "afff4513-0dee-4fbf-9e75-a9b0c29388a9"
+    },
+    {
+      "id": "e2a11fc6-a3f5-4f02-bffc-db3b9b1c0366",
+      "description": "Curso Técnico (5/12)",
+      "amount": 5.56,
+      "date": "2026-06-18",
+      "status": "cleared",
+      "deleted_at": null,
+      "account_id": "afff4513-0dee-4fbf-9e75-a9b0c29388a9"
+    },
+    {
+      "id": "8835dd6e-f3c9-41ec-b99c-f4f1ba734e60",
+      "description": "Curso Técnico (6/12)",
+      "amount": 5.56,
+      "date": "2026-07-18",
+      "status": "cleared",
+      "deleted_at": null,
+      "account_id": "afff4513-0dee-4fbf-9e75-a9b0c29388a9"
+    }
+  ],
+  "deleted": [
+    {
+      "id": "74163cf2-b145-4135-9b40-74f468dff1f8",
+      "description": "Curso Técnico (7/12)",
+      "amount": 5.55,
+      "date": "2026-08-18",
+      "status": "cleared",
+      "deleted_at": "2026-02-18T22:31:49.923+00:00",
+      "account_id": "afff4513-0dee-4fbf-9e75-a9b0c29388a9"
+    },
+    {
+      "id": "a34a0f94-6bfe-40b6-b98e-a35f6d8b6063",
+      "description": "Curso Técnico (8/12)",
+      "amount": 5.55,
+      "date": "2026-09-18",
+      "status": "cleared",
+      "deleted_at": "2026-02-18T22:31:49.923+00:00",
+      "account_id": "afff4513-0dee-4fbf-9e75-a9b0c29388a9"
+    },
+    {
+      "id": "392a9b7c-1884-43e0-b01f-58b68c9f3efa",
+      "description": "Curso Técnico (9/12)",
+      "amount": 5.55,
+      "date": "2026-10-18",
+      "status": "cleared",
+      "deleted_at": "2026-02-18T22:31:49.923+00:00",
+      "account_id": "afff4513-0dee-4fbf-9e75-a9b0c29388a9"
+    },
+    {
+      "id": "40467435-53b0-42b5-9da6-3aae9465b013",
+      "description": "Curso Técnico (10/12)",
+      "amount": 5.55,
+      "date": "2026-11-18",
+      "status": "cleared",
+      "deleted_at": "2026-02-18T22:31:49.923+00:00",
+      "account_id": "afff4513-0dee-4fbf-9e75-a9b0c29388a9"
+    },
+    {
+      "id": "d382e2d5-46cd-4fe3-a402-425f6caee081",
+      "description": "Curso Técnico (11/12)",
+      "amount": 5.55,
+      "date": "2026-12-18",
+      "status": "cleared",
+      "deleted_at": "2026-02-18T22:31:49.923+00:00",
+      "account_id": "afff4513-0dee-4fbf-9e75-a9b0c29388a9"
+    },
+    {
+      "id": "84f41d06-de56-4ebd-952f-538584a1780e",
+      "description": "Curso Técnico (12/12)",
+      "amount": 5.55,
+      "date": "2027-01-18",
+      "status": "cleared",
+      "deleted_at": "2026-02-18T22:31:49.923+00:00",
+      "account_id": "afff4513-0dee-4fbf-9e75-a9b0c29388a9"
+    },
+    {
+      "id": "0b14dd29-d822-4769-93d7-4b68db0cadc0",
+      "description": "Curso Técnico (7/12)",
+      "amount": 5.55,
+      "date": "2026-08-18",
+      "status": "cleared",
+      "deleted_at": "2026-02-18T22:31:49.923+00:00",
+      "account_id": "afff4513-0dee-4fbf-9e75-a9b0c29388a9"
+    },
+    {
+      "id": "31304f1b-1e73-4c3c-9f2b-d6ec8105f893",
+      "description": "Curso Técnico (2/12)",
+      "amount": 5.56,
+      "date": "2026-03-18",
+      "status": "cleared",
+      "deleted_at": "2026-02-18T22:28:34.175+00:00",
+      "account_id": "afff4513-0dee-4fbf-9e75-a9b0c29388a9"
+    },
+    {
+      "id": "760fe800-e6ee-4a5c-903a-a1a63a25d50c",
+      "description": "Curso Técnico (3/12)",
+      "amount": 5.56,
+      "date": "2026-04-18",
+      "status": "cleared",
+      "deleted_at": "2026-02-18T22:28:34.175+00:00",
+      "account_id": "afff4513-0dee-4fbf-9e75-a9b0c29388a9"
+    },
+    {
+      "id": "65185779-a51e-4262-97d7-f48d960652b4",
+      "description": "Curso Técnico (4/12)",
+      "amount": 5.56,
+      "date": "2026-05-18",
+      "status": "cleared",
+      "deleted_at": "2026-02-18T22:28:34.175+00:00",
+      "account_id": "afff4513-0dee-4fbf-9e75-a9b0c29388a9"
+    },
+    {
+      "id": "88998fae-2c81-46c6-959b-b2d1a17beab9",
+      "description": "Curso Técnico (5/12)",
+      "amount": 5.56,
+      "date": "2026-06-18",
+      "status": "cleared",
+      "deleted_at": "2026-02-18T22:28:34.175+00:00",
+      "account_id": "afff4513-0dee-4fbf-9e75-a9b0c29388a9"
+    },
+    {
+      "id": "23deedaa-f9a6-46c0-9248-99a5a85c78ce",
+      "description": "Curso Técnico (6/12)",
+      "amount": 5.56,
+      "date": "2026-07-18",
+      "status": "cleared",
+      "deleted_at": "2026-02-18T22:28:34.175+00:00",
+      "account_id": "afff4513-0dee-4fbf-9e75-a9b0c29388a9"
+    },
+    {
+      "id": "92796715-3786-48ac-90ad-3a086cd26a33",
+      "description": "Curso Técnico (1/12)",
+      "amount": 5.56,
+      "date": "2026-02-18",
+      "status": "cleared",
+      "deleted_at": "2026-02-18T22:28:34.175+00:00",
+      "account_id": "afff4513-0dee-4fbf-9e75-a9b0c29388a9"
+    },
+    {
+      "id": "5ae3923a-6669-4c15-bd41-417209ad2472",
+      "description": "Curso Técnico (8/12)",
+      "amount": 5.55,
+      "date": "2026-09-18",
+      "status": "cleared",
+      "deleted_at": "2026-02-18T22:31:49.923+00:00",
+      "account_id": "afff4513-0dee-4fbf-9e75-a9b0c29388a9"
+    },
+    {
+      "id": "66b60a98-b526-4a16-ad5a-959316823f96",
+      "description": "Curso Técnico (9/12)",
+      "amount": 5.55,
+      "date": "2026-10-18",
+      "status": "cleared",
+      "deleted_at": "2026-02-18T22:31:49.923+00:00",
+      "account_id": "afff4513-0dee-4fbf-9e75-a9b0c29388a9"
+    },
+    {
+      "id": "5a77e4d4-9b45-478a-add5-7109e5713225",
+      "description": "Curso Técnico (10/12)",
+      "amount": 5.55,
+      "date": "2026-11-18",
+      "status": "cleared",
+      "deleted_at": "2026-02-18T22:31:49.923+00:00",
+      "account_id": "afff4513-0dee-4fbf-9e75-a9b0c29388a9"
+    },
+    {
+      "id": "2b9f3ada-3b56-4e2d-9e75-3a8d6e9220fe",
+      "description": "Curso Técnico (11/12)",
+      "amount": 5.55,
+      "date": "2026-12-18",
+      "status": "cleared",
+      "deleted_at": "2026-02-18T22:31:49.923+00:00",
+      "account_id": "afff4513-0dee-4fbf-9e75-a9b0c29388a9"
+    },
+    {
+      "id": "68dc7766-68be-4e76-a2d2-538bc022c95a",
+      "description": "Curso Técnico (12/12)",
+      "amount": 5.55,
+      "date": "2027-01-18",
+      "status": "cleared",
+      "deleted_at": "2026-02-18T22:31:49.923+00:00",
+      "account_id": "afff4513-0dee-4fbf-9e75-a9b0c29388a9"
+    }
+  ]
+}

@@ -15,7 +15,6 @@ import {
   normalizeDistribution,
   percentToBps,
   validateDistributionSum,
-  type AutoBalanceStrategy,
 } from "@/lib/distribution/validation";
 import type { BaseIncomeMode, DistributionEditMode } from "@/lib/types/database";
 import { Loader2, Plus, Save, Trash2 } from "lucide-react";
@@ -55,18 +54,56 @@ export function DistributionClient({ distribution, orgId }: Props) {
 
   const [name, setName] = useState(distribution.name);
   const [mode, setMode] = useState<DistributionEditMode>(distribution.mode ?? "auto");
-  const [strategy, setStrategy] = useState<AutoBalanceStrategy>("flexible");
   const [baseIncomeMode, setBaseIncomeMode] = useState<BaseIncomeMode>(distribution.base_income_mode ?? "current_month");
   const [plannedIncome, setPlannedIncome] = useState(distribution.planned_income?.toString() ?? "");
   const [buckets, setBuckets] = useState<BucketEdit[]>(toBucketEdit(distribution));
+  const [percentDraftById, setPercentDraftById] = useState<Record<string, string>>({});
 
   const totalBps = useMemo(() => buckets.reduce((sum, bucket) => sum + bucket.percent_bps, 0), [buckets]);
   const delta = distributionDelta(buckets);
   const isValid = validateDistributionSum(buckets);
-  const canSave = mode === "auto" ? true : isValid;
+  const hasFlexibleBucket = useMemo(() => buckets.some((bucket) => bucket.is_flexible), [buckets]);
+  const canSave = mode === "manual" ? isValid : isValid && hasFlexibleBucket;
 
   function updateBucket(index: number, update: Partial<BucketEdit>) {
     setBuckets((prev) => prev.map((bucket, current) => (current === index ? { ...bucket, ...update } : bucket)));
+  }
+
+  function updateFlexibleBucket(index: number, checked: boolean) {
+    setBuckets((prev) => {
+      if (checked) {
+        return prev.map((bucket, current) => ({
+          ...bucket,
+          is_flexible: current === index,
+        }));
+      }
+
+      const hasAnotherFlexible = prev.some((bucket, current) => current !== index && bucket.is_flexible);
+      if (!hasAnotherFlexible) {
+        toast({
+          title: "Bucket flexivel obrigatorio",
+          description: "No modo auto, mantenha pelo menos um bucket flexivel.",
+          variant: "destructive",
+        });
+        return prev;
+      }
+
+      return prev.map((bucket, current) =>
+        current === index ? { ...bucket, is_flexible: false } : bucket
+      );
+    });
+  }
+
+  function handleModeChange(nextMode: DistributionEditMode) {
+    setMode(nextMode);
+    if (nextMode === "auto" && !buckets.some((bucket) => bucket.is_flexible) && buckets.length > 0) {
+      setBuckets((prev) =>
+        prev.map((bucket, index) => ({
+          ...bucket,
+          is_flexible: index === 0,
+        }))
+      );
+    }
   }
 
   function handlePercentChange(index: number, percentValue: number) {
@@ -84,13 +121,58 @@ export function DistributionClient({ distribution, orgId }: Props) {
       is_flexible: bucket.is_flexible,
     }));
 
-    const balanced = autoBalanceOnEdit(source, buckets[index].id, newBps, strategy);
+    const balanced = autoBalanceOnEdit(source, buckets[index].id, newBps, "flexible");
     setBuckets((prev) =>
       prev.map((bucket) => {
         const next = balanced.find((item) => item.id === bucket.id);
         return next ? { ...bucket, percent_bps: next.percent_bps } : bucket;
       })
     );
+  }
+
+  function formatPercentValue(percentBps: number) {
+    return bpsToPercent(percentBps).toFixed(2).replace(".", ",");
+  }
+
+  function parsePercentInput(raw: string): number | null {
+    const sanitized = raw.trim().replace(/\s+/g, "").replace(",", ".");
+    if (!sanitized) return null;
+    const parsed = Number(sanitized);
+    if (!Number.isFinite(parsed)) return null;
+    return Math.max(0, Math.min(100, parsed));
+  }
+
+  function clearPercentDraft(bucketId: string) {
+    setPercentDraftById((prev) => {
+      if (!(bucketId in prev)) return prev;
+      const next = { ...prev };
+      delete next[bucketId];
+      return next;
+    });
+  }
+
+  function handlePercentDraftChange(index: number, rawValue: string) {
+    const bucket = buckets[index];
+    if (!bucket) return;
+
+    setPercentDraftById((prev) => ({ ...prev, [bucket.id]: rawValue }));
+    const parsed = parsePercentInput(rawValue);
+    if (parsed != null) {
+      handlePercentChange(index, parsed);
+    }
+  }
+
+  function commitPercentDraft(index: number) {
+    const bucket = buckets[index];
+    if (!bucket) return;
+    const draft = percentDraftById[bucket.id];
+    if (draft === undefined) return;
+
+    const parsed = parsePercentInput(draft);
+    if (parsed != null) {
+      handlePercentChange(index, parsed);
+    }
+    clearPercentDraft(bucket.id);
   }
 
   function handleNormalize() {
@@ -131,15 +213,33 @@ export function DistributionClient({ distribution, orgId }: Props) {
       return;
     }
 
+    const removed = buckets[index];
+    if (removed) clearPercentDraft(removed.id);
+
     let next = buckets.filter((_, current) => current !== index);
     if (mode === "auto") {
       next = normalizeDistribution(next);
+      if (!next.some((bucket) => bucket.is_flexible) && next.length > 0) {
+        next = next.map((bucket, current) => ({
+          ...bucket,
+          is_flexible: current === 0,
+        }));
+      }
     }
 
     setBuckets(next.map((bucket, current) => ({ ...bucket, sort_order: current })));
   }
 
   function handleSave() {
+    if (mode === "auto" && !hasFlexibleBucket) {
+      toast({
+        title: "Bucket flexivel obrigatorio",
+        description: "Marque um bucket como flexivel para que os ajustes caiam somente nele.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     if (!canSave) {
       toast({
         title: "Distribuicao invalida",
@@ -246,7 +346,7 @@ export function DistributionClient({ distribution, orgId }: Props) {
                   type="button"
                   size="sm"
                   variant={mode === "auto" ? "default" : "outline"}
-                  onClick={() => setMode("auto")}
+                  onClick={() => handleModeChange("auto")}
                 >
                   Auto-balance
                 </Button>
@@ -254,7 +354,7 @@ export function DistributionClient({ distribution, orgId }: Props) {
                   type="button"
                   size="sm"
                   variant={mode === "manual" ? "default" : "outline"}
-                  onClick={() => setMode("manual")}
+                  onClick={() => handleModeChange("manual")}
                 >
                   Manual
                 </Button>
@@ -263,25 +363,10 @@ export function DistributionClient({ distribution, orgId }: Props) {
 
             {mode === "auto" && (
               <div className="space-y-1">
-                <Label>Estrategia</Label>
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant={strategy === "flexible" ? "default" : "outline"}
-                    onClick={() => setStrategy("flexible")}
-                  >
-                    S1 Flexivel
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant={strategy === "proportional" ? "default" : "outline"}
-                    onClick={() => setStrategy("proportional")}
-                  >
-                    S2 Proporcional
-                  </Button>
-                </div>
+                <Label>Ajuste automatico</Label>
+                <p className="text-sm text-muted-foreground">
+                  Ao editar um bucket, o ajuste e aplicado apenas no bucket marcado como flexivel.
+                </p>
               </div>
             )}
           </div>
@@ -339,15 +424,16 @@ export function DistributionClient({ distribution, orgId }: Props) {
               <div className="w-28">
                 <Label className="text-xs">Percentual</Label>
                 <Input
-                  type="number"
-                  step="0.01"
-                  min={0}
-                  max={100}
-                  value={bpsToPercent(bucket.percent_bps).toFixed(2)}
-                  onChange={(event) => {
-                    const value = Number(event.target.value);
-                    if (!Number.isNaN(value)) {
-                      handlePercentChange(index, value);
+                  type="text"
+                  inputMode="decimal"
+                  value={percentDraftById[bucket.id] ?? formatPercentValue(bucket.percent_bps)}
+                  onChange={(event) => handlePercentDraftChange(index, event.target.value)}
+                  onBlur={() => commitPercentDraft(index)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      commitPercentDraft(index);
+                      (event.currentTarget as HTMLInputElement).blur();
                     }
                   }}
                   className="mt-1"
@@ -359,7 +445,7 @@ export function DistributionClient({ distribution, orgId }: Props) {
                   <input
                     type="checkbox"
                     checked={bucket.is_flexible}
-                    onChange={(event) => updateBucket(index, { is_flexible: event.target.checked })}
+                    onChange={(event) => updateFlexibleBucket(index, event.target.checked)}
                     className="h-4 w-4 rounded border-input"
                   />
                   Flexivel
@@ -386,6 +472,9 @@ export function DistributionClient({ distribution, orgId }: Props) {
                 <span className="ml-2 text-destructive">
                   {delta > 0 ? `Faltam ${(delta / 100).toFixed(2)}%` : `Sobram ${Math.abs(delta / 100).toFixed(2)}%`}
                 </span>
+              )}
+              {mode === "auto" && !hasFlexibleBucket && (
+                <span className="ml-2 text-destructive">Marque um bucket flexivel.</span>
               )}
             </span>
             <Button type="button" variant="outline" onClick={handleAddBucket} disabled={buckets.length >= 8 || isPending}>
