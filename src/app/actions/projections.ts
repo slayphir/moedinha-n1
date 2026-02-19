@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getActiveOrgIdForUser } from "@/lib/active-org";
 import { addDays, addMonths, addWeeks, addYears, isAfter, isBefore, isSameDay, parseISO, startOfDay, format } from "date-fns";
 import { RecurringRule } from "@/lib/types/database";
+import { isRetroactiveInstallmentBackfill } from "@/lib/transactions/retroactive";
 
 export type DailyProjection = {
     date: string;
@@ -16,6 +17,11 @@ export type DailyProjection = {
         type: "income" | "expense" | "transfer";
         isProjection: boolean;
     }[];
+};
+
+type LastRunRow = {
+    rule_id: string | null;
+    run_at: string | null;
 };
 
 export async function getFinancialProjection(days: number = 90) {
@@ -41,7 +47,7 @@ export async function getFinancialProjection(days: number = 90) {
     // For V1, we fetch all non-deleted.
     const { data: allTransactions, error: txError } = await supabase
         .from("transactions")
-        .select("id, date, amount, type, description")
+        .select("id, date, amount, type, description, installment_id, created_at, metadata")
         .eq("org_id", orgId)
         .is("deleted_at", null)
         .order("date", { ascending: true });
@@ -57,7 +63,9 @@ export async function getFinancialProjection(days: number = 90) {
     // Then the chart starts at Today, showing Today's transactions effect.
 
     let currentBalance = initialBalanceSum;
-    const historicTransactions = allTransactions || [];
+    const historicTransactions = (allTransactions || []).filter(
+        (transaction) => !isRetroactiveInstallmentBackfill(transaction)
+    );
 
     const todayStr = format(today, 'yyyy-MM-dd');
 
@@ -102,7 +110,8 @@ export async function getFinancialProjection(days: number = 90) {
 
     // Map rule_id -> last_run_date
     const lastRunMap: Record<string, Date> = {};
-    (lastRuns || []).forEach((run: any) => {
+    (lastRuns || []).forEach((run: LastRunRow) => {
+        if (!run.rule_id || !run.run_at) return;
         const d = parseISO(run.run_at);
         if (!lastRunMap[run.rule_id] || d > lastRunMap[run.rule_id]) {
             lastRunMap[run.rule_id] = d;
@@ -111,7 +120,6 @@ export async function getFinancialProjection(days: number = 90) {
 
     // 4. Generate Daily Projection
     const projection: DailyProjection[] = [];
-    const endDate = addDays(today, days);
     let runningBalance = currentBalance;
 
     // We iterate day by day
@@ -146,18 +154,7 @@ export async function getFinancialProjection(days: number = 90) {
             // We start checking from lastRun (or start_date) and projecting forward.
             // If a projection hits 'date', we add it.
 
-            let nextDue = lastRunMap[rule.id]
-                ? parseISO(lastRunMap[rule.id] as unknown as string) // re-parse to be safe? lastRunMap values are Date objects already
-                : parseISO(rule.start_date);
-
-            // If lastRun exists, nextDue is +frequency.
-            // If no lastRun, nextDue is start_date.
-            // BUT we need to iterate until we pass 'date'
-
-            // Optimization: Calculate nextDue relative to 'lastRun' ONCE, then iterate?
-            // No, simpler: check if 'date' corresponds to a due date.
-
-            // Let's define the first "Target" date for this rule.
+            // Define the first target occurrence for this rule.
             let target = lastRunMap[rule.id]
                 ? addFrequency(lastRunMap[rule.id], rule.frequency)
                 : parseISO(rule.start_date);

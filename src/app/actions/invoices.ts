@@ -1,7 +1,27 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
-import { addMonths, subMonths, setDate, isBefore, isAfter, startOfDay, endOfDay } from "date-fns";
+import { addMonths, subMonths, isBefore, isAfter, startOfDay, endOfDay } from "date-fns";
+import { isRetroactiveInstallmentBackfill } from "@/lib/transactions/retroactive";
+
+export interface InvoiceTransaction {
+    id: string;
+    type: "income" | "expense" | "transfer";
+    amount: number;
+    date: string;
+    description: string | null;
+    installment_id?: string | null;
+    created_at?: string | null;
+    metadata?: Record<string, unknown> | null;
+    installments?: number | null;
+    installment_number?: number | null;
+    category?: {
+        id: string;
+        name: string;
+        color?: string | null;
+        icon?: string | null;
+    } | null;
+}
 
 export interface InvoiceData {
     account: {
@@ -22,7 +42,7 @@ export interface InvoiceData {
         status: "open" | "closed" | "overdue" | "paid";
         dueDate: Date;
     };
-    transactions: any[];
+    transactions: InvoiceTransaction[];
 }
 
 export async function getInvoiceData(accountId: string, year?: number, month?: number): Promise<{ data?: InvoiceData; error?: string }> {
@@ -48,7 +68,7 @@ export async function getInvoiceData(accountId: string, year?: number, month?: n
     // Closing Date: The day calculation closes for this month
     // Example: Closing Day 5. Target: Feb 2024.
     // Closing Date = Feb 5, 2024.
-    let closingDate = new Date(targetYear, targetMonth, account.closing_day);
+    const closingDate = new Date(targetYear, targetMonth, account.closing_day);
 
     // Period End: Day before closing date (inclusive)
     // Example: Feb 4, 2024.
@@ -71,6 +91,8 @@ export async function getInvoiceData(accountId: string, year?: number, month?: n
     }
 
     // 3. Fetch Transactions
+    const periodStartIso = periodStart.toISOString().slice(0, 10);
+    const periodEndIso = periodEnd.toISOString().slice(0, 10);
     const { data: transactions, error: txError } = await supabase
         .from("transactions")
         .select(`
@@ -78,8 +100,9 @@ export async function getInvoiceData(accountId: string, year?: number, month?: n
             category:categories(id, name, color, icon)
         `)
         .eq("account_id", accountId)
-        .gte("date", periodStart.toISOString())
-        .lte("date", periodEnd.toISOString())
+        .is("deleted_at", null)
+        .gte("date", periodStartIso)
+        .lte("date", periodEndIso)
         .order("date", { ascending: false });
 
     if (txError) {
@@ -88,20 +111,32 @@ export async function getInvoiceData(accountId: string, year?: number, month?: n
     }
 
     // 4. Calculate Total
-    const total = transactions?.reduce((acc, curr) => {
-        const amount = Number(curr.amount);
-        if (curr.type === 'expense') return acc - amount;
-        if (curr.type === 'income') return acc + amount;
-        return acc;
-    }, 0) || 0;
+    const typedTransactions = (transactions ?? []) as InvoiceTransaction[];
+    const visibleTransactions = typedTransactions.filter((tx) => !isRetroactiveInstallmentBackfill(tx));
+
+    const summary = visibleTransactions.reduce(
+        (acc, curr) => {
+            const amountAbs = Math.abs(Number(curr.amount) || 0);
+            if (curr.type === "expense") {
+                acc.expense += amountAbs;
+            } else if (curr.type === "income") {
+                acc.income += amountAbs;
+            }
+            return acc;
+        },
+        { expense: 0, income: 0 }
+    );
+
+    // Outstanding invoice debt never goes below zero.
+    const total = Math.max(summary.expense - summary.income, 0);
 
     // 5. Determine Status
     let status: "open" | "closed" | "overdue" | "paid" = "closed";
 
     if (isBefore(now, closingDate)) {
         status = "open";
-    } else if (isAfter(now, dueDate) && total < 0) {
-        // Only overdue if negative balance (debt)
+    } else if (isAfter(now, dueDate) && total > 0) {
+        // Only overdue when there is an unpaid invoice amount.
         status = "overdue";
     } else {
         status = "closed";
@@ -121,7 +156,7 @@ export async function getInvoiceData(accountId: string, year?: number, month?: n
                 status,
                 dueDate
             },
-            transactions: transactions || []
+            transactions: visibleTransactions
         }
     };
 }
@@ -132,8 +167,9 @@ export async function getAvailableInvoices(accountId: string) {
     // Fetch distinct months from transactions
     const { data, error } = await supabase
         .from("transactions")
-        .select("date")
+        .select("date, type, installment_id, created_at, metadata")
         .eq("account_id", accountId)
+        .is("deleted_at", null)
         .order("date", { ascending: false });
 
     if (error || !data) return [];
@@ -141,7 +177,9 @@ export async function getAvailableInvoices(accountId: string) {
     const uniqueMonths = new Set<string>();
     const invoices = [];
 
-    for (const tx of data) {
+    const visibleRows = (data ?? []).filter((tx) => !isRetroactiveInstallmentBackfill(tx));
+
+    for (const tx of visibleRows) {
         const date = new Date(tx.date);
         const key = `${date.getFullYear()}-${date.getMonth()}`;
         if (!uniqueMonths.has(key)) {

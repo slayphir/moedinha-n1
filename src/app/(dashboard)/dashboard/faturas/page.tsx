@@ -6,8 +6,10 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { EmptyInvoiceState } from "./_components/empty-invoice-state";
 import { NewCardButton } from "./_components/new-card-button";
+import { isRetroactiveInstallmentBackfill } from "@/lib/transactions/retroactive";
 
-export const revalidate = 60;
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 type CardAccount = {
   id: string;
@@ -26,6 +28,10 @@ type TxRow = {
   description: string | null;
   amount: number;
   status: string;
+  type: "expense" | "income" | "transfer";
+  installment_id: string | null;
+  created_at: string | null;
+  metadata: Record<string, unknown> | null;
 };
 
 function daysInMonth(year: number, monthIndex: number) {
@@ -56,6 +62,13 @@ function computeFallbackDueDate(dateStr: string, closingDay?: number | null, due
   return toIsoDate(dueDate.getFullYear(), dueDate.getMonth(), dueDay);
 }
 
+function isDueDateInvalid(txDate: string, dueDate: string | null): boolean {
+  if (!dueDate) return true;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) return true;
+  // Credit card invoices should not mature before the transaction date.
+  return dueDate < txDate;
+}
+
 export default async function FaturasPage({
   searchParams,
 }: {
@@ -72,6 +85,7 @@ export default async function FaturasPage({
     .from("org_members")
     .select("org_id")
     .eq("user_id", user.id)
+    .order("created_at", { ascending: true }) // Ensure consistent order
     .limit(1);
 
   const orgId = members?.[0]?.org_id;
@@ -103,7 +117,7 @@ export default async function FaturasPage({
 
   const { data: txRows } = await supabase
     .from("transactions")
-    .select("id, date, due_date, description, amount, status")
+    .select("id, date, due_date, description, amount, status, type, installment_id, created_at, metadata")
     .eq("org_id", orgId)
     .eq("account_id", selectedCard.id)
     .eq("type", "expense")
@@ -112,11 +126,12 @@ export default async function FaturasPage({
     .lte("date", rangeEnd)
     .order("date", { ascending: false });
 
-  const allRows = (txRows ?? []) as TxRow[];
+  const allRows = ((txRows ?? []) as TxRow[]).filter((row) => !isRetroactiveInstallmentBackfill(row));
   const invoiceRows = allRows
     .map((row) => {
-      const dueDate =
-        row.due_date ?? computeFallbackDueDate(row.date, selectedCard.closing_day ?? null, selectedCard.due_day ?? null);
+      const dueDate = isDueDateInvalid(row.date, row.due_date)
+        ? computeFallbackDueDate(row.date, selectedCard.closing_day ?? null, selectedCard.due_day ?? null)
+        : row.due_date;
       return {
         ...row,
         due_date: dueDate,

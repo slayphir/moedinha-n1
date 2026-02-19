@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { getActiveOrgIdForUser } from "@/lib/active-org";
+import { isRetroactiveInstallmentBackfill } from "@/lib/transactions/retroactive";
 
 export type CategorySpend = {
   category_id: string | null;
@@ -48,12 +49,19 @@ type TransactionRow = {
   bucket_id: string | null;
   due_date: string | null;
   installment_id: string | null;
+  created_at: string | null;
+  metadata: Record<string, unknown> | null;
   categories: NameRelation;
   distribution_buckets: NameRelation;
 };
 
 type PrevTransactionRow = {
   amount: number | string;
+  type: "income" | "expense" | "transfer";
+  date: string;
+  installment_id: string | null;
+  created_at: string | null;
+  metadata: Record<string, unknown> | null;
   category_id: string | null;
 };
 
@@ -95,7 +103,7 @@ export async function getReportMetrics(startDate: string, endDate: string): Prom
   const { data: txRows } = await supabase
     .from("transactions")
     .select(
-      "id, amount, date, type, category_id, bucket_id, due_date, installment_id, categories(name), distribution_buckets(name)"
+      "id, amount, date, type, category_id, bucket_id, due_date, installment_id, created_at, metadata, categories(name), distribution_buckets(name)"
     )
     .eq("org_id", orgId)
     .is("deleted_at", null)
@@ -103,7 +111,9 @@ export async function getReportMetrics(startDate: string, endDate: string): Prom
     .lte("date", endDate)
     .order("date", { ascending: true });
 
-  const transactions = (txRows ?? []) as TransactionRow[];
+  const transactions = ((txRows ?? []) as TransactionRow[]).filter(
+    (transaction) => !isRetroactiveInstallmentBackfill(transaction)
+  );
 
   const startMs = new Date(startDate).getTime();
   const endMs = new Date(endDate).getTime();
@@ -113,14 +123,16 @@ export async function getReportMetrics(startDate: string, endDate: string): Prom
 
   const { data: prevRows } = await supabase
     .from("transactions")
-    .select("amount, category_id")
+    .select("amount, category_id, type, date, installment_id, created_at, metadata")
     .eq("org_id", orgId)
     .is("deleted_at", null)
     .gte("date", prevStart)
     .lte("date", prevEnd)
     .eq("type", "expense");
 
-  const prevTransactions = (prevRows ?? []) as PrevTransactionRow[];
+  const prevTransactions = ((prevRows ?? []) as PrevTransactionRow[]).filter(
+    (transaction) => !isRetroactiveInstallmentBackfill(transaction)
+  );
 
   const totalIncome = transactions
     .filter((transaction) => transaction.type === "income")

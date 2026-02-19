@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { getActiveOrgIdForUser } from "@/lib/active-org";
+import { isRetroactiveInstallmentBackfill } from "@/lib/transactions/retroactive";
 
 export type CategoryDetail = {
   id: string;
@@ -31,18 +32,31 @@ type BucketRelation = { name: string } | { name: string }[] | null;
 type DrilldownTransactionRow = {
   id: string;
   date: string;
+  type: "income" | "expense" | "transfer";
   amount: number | string;
   description: string | null;
+  installment_id: string | null;
+  created_at: string | null;
+  metadata: Record<string, unknown> | null;
   distribution_buckets: BucketRelation;
 };
 
 type AmountRow = {
+  type: "income" | "expense" | "transfer";
+  date: string;
   amount: number | string;
+  installment_id: string | null;
+  created_at: string | null;
+  metadata: Record<string, unknown> | null;
 };
 
 type TrendRow = {
+  type: "income" | "expense" | "transfer";
   date: string;
   amount: number | string;
+  installment_id: string | null;
+  created_at: string | null;
+  metadata: Record<string, unknown> | null;
 };
 
 function relationName(relation: BucketRelation): string | undefined {
@@ -82,7 +96,7 @@ export async function getCategoryDrilldown(
 
   let transactionQuery = supabase
     .from("transactions")
-    .select("id, date, amount, description, bucket_id, distribution_buckets(name)")
+    .select("id, date, amount, type, description, installment_id, created_at, metadata, bucket_id, distribution_buckets(name)")
     .eq("org_id", orgId)
     .eq("type", "expense")
     .is("deleted_at", null)
@@ -97,26 +111,30 @@ export async function getCategoryDrilldown(
   }
 
   const { data: transactionRows } = await transactionQuery;
-  const transactions: CategoryDetail[] = ((transactionRows ?? []) as DrilldownTransactionRow[]).map((row) => ({
-    id: row.id,
-    date: row.date,
-    amount: Math.abs(Number(row.amount)),
-    description: row.description ?? undefined,
-    bucket_name: relationName(row.distribution_buckets),
-  }));
+  const transactions: CategoryDetail[] = ((transactionRows ?? []) as DrilldownTransactionRow[])
+    .filter((row) => !isRetroactiveInstallmentBackfill(row))
+    .map((row) => ({
+      id: row.id,
+      date: row.date,
+      amount: Math.abs(Number(row.amount)),
+      description: row.description ?? undefined,
+      bucket_name: relationName(row.distribution_buckets),
+    }));
 
   const totalSpend = transactions.reduce((sum, transaction) => sum + transaction.amount, 0);
 
   const { data: totalRows } = await supabase
     .from("transactions")
-    .select("amount")
+    .select("amount, type, date, installment_id, created_at, metadata")
     .eq("org_id", orgId)
     .eq("type", "expense")
     .is("deleted_at", null)
     .gte("date", startDate)
     .lte("date", endDate);
 
-  const totalAll = ((totalRows ?? []) as AmountRow[]).reduce((sum, row) => sum + Math.abs(Number(row.amount)), 0);
+  const totalAll = ((totalRows ?? []) as AmountRow[])
+    .filter((row) => !isRetroactiveInstallmentBackfill(row))
+    .reduce((sum, row) => sum + Math.abs(Number(row.amount)), 0);
   const pctOfTotal = totalAll > 0 ? (totalSpend / totalAll) * 100 : 0;
 
   const startMs = new Date(startDate).getTime();
@@ -127,7 +145,7 @@ export async function getCategoryDrilldown(
 
   let previousQuery = supabase
     .from("transactions")
-    .select("amount")
+    .select("amount, type, date, installment_id, created_at, metadata")
     .eq("org_id", orgId)
     .eq("type", "expense")
     .is("deleted_at", null)
@@ -141,7 +159,9 @@ export async function getCategoryDrilldown(
   }
 
   const { data: previousRows } = await previousQuery;
-  const prevTotal = ((previousRows ?? []) as AmountRow[]).reduce((sum, row) => sum + Math.abs(Number(row.amount)), 0);
+  const prevTotal = ((previousRows ?? []) as AmountRow[])
+    .filter((row) => !isRetroactiveInstallmentBackfill(row))
+    .reduce((sum, row) => sum + Math.abs(Number(row.amount)), 0);
   const variationVsPrev = prevTotal > 0 ? ((totalSpend - prevTotal) / prevTotal) * 100 : 0;
 
   const sixMonthsAgo = new Date();
@@ -150,7 +170,7 @@ export async function getCategoryDrilldown(
 
   let trendQuery = supabase
     .from("transactions")
-    .select("date, amount")
+    .select("date, amount, type, installment_id, created_at, metadata")
     .eq("org_id", orgId)
     .eq("type", "expense")
     .is("deleted_at", null)
@@ -167,10 +187,12 @@ export async function getCategoryDrilldown(
   const months = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
   const trendMap: Record<string, number> = {};
 
-  ((trendRows ?? []) as TrendRow[]).forEach((row) => {
-    const key = row.date.slice(0, 7);
-    trendMap[key] = (trendMap[key] ?? 0) + Math.abs(Number(row.amount));
-  });
+  ((trendRows ?? []) as TrendRow[])
+    .filter((row) => !isRetroactiveInstallmentBackfill(row))
+    .forEach((row) => {
+      const key = row.date.slice(0, 7);
+      trendMap[key] = (trendMap[key] ?? 0) + Math.abs(Number(row.amount));
+    });
 
   const trend: CategoryTrend[] = Object.entries(trendMap)
     .sort(([a], [b]) => a.localeCompare(b))

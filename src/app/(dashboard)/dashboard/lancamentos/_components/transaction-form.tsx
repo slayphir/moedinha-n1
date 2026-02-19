@@ -2,9 +2,10 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { addMonths, parseISO } from "date-fns";
+import { formatCurrency } from "@/lib/utils";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ChevronDown, ChevronUp, Sparkles } from "lucide-react";
+import { ChevronDown, ChevronUp, Sparkles, Calculator } from "lucide-react";
 import { transactionSchema, type TransactionFormValues } from "@/lib/validators/transaction";
 import { useFinancialData } from "@/hooks/use-financial-data";
 import { Button } from "@/components/ui/button";
@@ -32,12 +33,24 @@ interface TransactionInsert {
   account_id: string;
   transfer_account_id: string | null;
   category_id: string | null;
+  bucket_id?: string | null;
   contact_id?: string | null;
   description: string | null;
   date: string;
   due_date?: string | null;
+  installment_id?: string | null;
+  metadata?: Record<string, unknown> | null;
   created_by: string;
 }
+
+type InstallmentPreview = {
+  index: number;
+  amount: number;
+  date: string;
+  dueDate: string | null;
+  effectiveDate: string;
+  defaultPaid: boolean;
+};
 
 export interface QuickSaveResult {
   insertedIds: string[];
@@ -87,6 +100,7 @@ const defaultValues: TransactionFormValues = {
   transferAccountId: null,
   contactId: null,
   payPastInstallments: false,
+  installmentInputType: "total",
 };
 
 function splitAmount(total: number, count: number): number[] {
@@ -96,6 +110,82 @@ function splitAmount(total: number, count: number): number[] {
   return Array.from({ length: count }, (_, index) => (base + (index < remainder ? 1 : 0)) / 100);
 }
 
+function toFiniteNumber(value: unknown): number {
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+  if (typeof value === "string") {
+    const normalized = value.trim().replace(",", ".");
+    if (!normalized) return 0;
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
+}
+
+function createUuidV4(): string {
+  const bytes = new Uint8Array(16);
+  if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") {
+    crypto.getRandomValues(bytes);
+  } else {
+    for (let i = 0; i < bytes.length; i += 1) {
+      bytes[i] = Math.floor(Math.random() * 256);
+    }
+  }
+
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+
+  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
+}
+
+function buildInstallmentPreview(args: {
+  amount: number;
+  installments: number;
+  installmentInputType: "total" | "installment";
+  date: string;
+  dueDate: string | null;
+}): InstallmentPreview[] {
+  const {
+    amount,
+    installments,
+    installmentInputType,
+    date,
+    dueDate,
+  } = args;
+  const normalizedAmount = toFiniteNumber(amount);
+
+  if (installments <= 1 || normalizedAmount <= 0) return [];
+  const startDate = parseISO(date);
+  if (Number.isNaN(startDate.getTime())) return [];
+
+  const parts =
+    installmentInputType === "installment"
+      ? Array(installments).fill(normalizedAmount)
+      : splitAmount(normalizedAmount, installments);
+
+  const dueDateBase = dueDate ? parseISO(dueDate) : null;
+  const hasDueDateBase = Boolean(dueDateBase && !Number.isNaN(dueDateBase.getTime()));
+
+  return parts.map((value, index) => {
+    const thisDate = addMonths(startDate, index).toISOString().slice(0, 10);
+    const thisDueDate =
+      hasDueDateBase && dueDateBase
+        ? addMonths(dueDateBase, index).toISOString().slice(0, 10)
+        : null;
+    const effectiveDate = thisDueDate ?? thisDate;
+    const defaultPaid = false;
+
+    return {
+      index,
+      amount: value,
+      date: thisDate,
+      dueDate: thisDueDate,
+      effectiveDate,
+      defaultPaid,
+    };
+  });
+}
+
 function clampDay(year: number, monthIndex: number, day: number) {
   const maxDay = new Date(year, monthIndex + 1, 0).getDate();
   return Math.max(1, Math.min(day, maxDay));
@@ -103,6 +193,19 @@ function clampDay(year: number, monthIndex: number, day: number) {
 
 function toIsoDate(year: number, monthIndex: number, day: number) {
   return new Date(year, monthIndex, clampDay(year, monthIndex, day)).toISOString().slice(0, 10);
+}
+
+function formatIsoDateBR(isoDate: string | null | undefined) {
+  if (!isoDate || !/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) return "";
+  const [year, month, day] = isoDate.split("-");
+  return `${day}/${month}/${year}`;
+}
+
+function extractIsoDay(isoDate: string | null | undefined): string | null {
+  if (!isoDate || !/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) return null;
+  const day = Number(isoDate.slice(8, 10));
+  if (!Number.isFinite(day)) return null;
+  return String(day);
 }
 
 function computeCreditCardDueDate(
@@ -117,17 +220,54 @@ function computeCreditCardDueDate(
   if (Number.isNaN(txDate.getTime())) return null;
 
   let monthOffset = 0;
+  const hasClosingDay = Boolean(closingDay && closingDay >= 1 && closingDay <= 31);
 
-  if (closingDay && closingDay >= 1 && closingDay <= 31) {
-    if (txDate.getDate() > closingDay) {
+  if (hasClosingDay) {
+    // Regra do wizard: compra apos o fechamento cai no proximo ciclo.
+    if (txDate.getDate() > Number(closingDay)) {
       monthOffset = 1;
+    }
+
+    // Quando vencimento cai no mesmo dia ou antes do fechamento,
+    // ele pertence ao mes seguinte do ciclo.
+    if (dueDay <= Number(closingDay)) {
+      monthOffset += 1;
     }
   } else if (txDate.getDate() > dueDay) {
     monthOffset = 1;
   }
 
-  const target = new Date(txDate.getFullYear(), txDate.getMonth() + monthOffset, 1);
-  return toIsoDate(target.getFullYear(), target.getMonth(), dueDay);
+  let target = new Date(txDate.getFullYear(), txDate.getMonth() + monthOffset, 1);
+  let dueIso = toIsoDate(target.getFullYear(), target.getMonth(), dueDay);
+
+  // Garantia defensiva: nunca sugerir vencimento anterior a data da compra.
+  let safety = 0;
+  while (dueIso < txDateIso && safety < 24) {
+    target = new Date(target.getFullYear(), target.getMonth() + 1, 1);
+    dueIso = toIsoDate(target.getFullYear(), target.getMonth(), dueDay);
+    safety += 1;
+  }
+
+  return dueIso;
+}
+
+function normalizeCreditCardDueDate(
+  txDateIso: string,
+  dueDateIso: string | null,
+  closingDay: number | null | undefined,
+  dueDay: number | null | undefined
+): string | null {
+  const suggested = computeCreditCardDueDate(txDateIso, closingDay, dueDay);
+
+  if (!dueDateIso) return suggested;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dueDateIso)) return suggested;
+
+  // Fatura de cartao nao deve vencer antes da data da compra.
+  if (dueDateIso < txDateIso) {
+    return suggested ?? dueDateIso;
+  }
+
+  return dueDateIso;
 }
 
 function asFrequency(value: string): Frequency {
@@ -220,12 +360,14 @@ export function TransactionForm({
   const [categoryManuallyTouched, setCategoryManuallyTouched] = useState(false);
   const [autoCategorized, setAutoCategorized] = useState(false);
   const [manualCategoryCorrection, setManualCategoryCorrection] = useState(false);
+  const [installmentPaidOverrides, setInstallmentPaidOverrides] = useState<Record<number, boolean>>({});
 
   const supabase = createClient();
   const amountInputRef = useRef<HTMLInputElement | null>(null);
   const startedAtRef = useRef<number>(Date.now());
   const clicksRef = useRef<number>(0);
   const autoSuggestedCategoryRef = useRef<string | null>(null);
+  const dueDateManuallyEditedRef = useRef(false);
 
   const form = useForm<TransactionFormValues>({
     resolver: zodResolver(transactionSchema),
@@ -248,10 +390,22 @@ export function TransactionForm({
   const txDate = watch("date");
   const isPaid = watch("isPaid");
   const isInstallment = watch("isInstallment");
+  const installmentCount = watch("installments");
+  const installmentInputType = watch("installmentInputType");
   const isRecurring = watch("isRecurring");
+  const amountValue = watch("amount");
+  const normalizedAmountValue = toFiniteNumber(amountValue);
+  const dueDateValue = watch("dueDate");
   const descriptionValue = watch("description") ?? "";
   const selectedCategoryId = watch("categoryId");
-  const selectedDueDate = watch("dueDate");
+  const amountFieldLabel =
+    type === "expense" && isInstallment
+      ? installmentInputType === "installment"
+        ? "Valor da parcela"
+        : "Valor da compra"
+      : "Valor";
+  const txDateLabel = type === "expense" ? "Data da compra" : "Data do lancamento";
+  const isInstallmentFlow = type === "expense" && isInstallment;
 
   const selectedAccount = useMemo(
     () => accounts.find((item) => item.id === sourceAccountId),
@@ -261,11 +415,48 @@ export function TransactionForm({
   const suggestedDueDate = selectedAccountIsCreditCard
     ? computeCreditCardDueDate(txDate, selectedAccount?.closing_day, selectedAccount?.due_day)
     : null;
+  const resolvedPreviewDueDate =
+    type !== "expense"
+      ? null
+      : selectedAccountIsCreditCard
+        ? normalizeCreditCardDueDate(txDate, dueDateValue ?? null, selectedAccount?.closing_day, selectedAccount?.due_day)
+        : dueDateValue ?? null;
 
   const accountOptions = accounts.filter((account) => account.id !== sourceAccountId);
   const categoriesForType = useMemo(
     () => categories.filter((category) => category.type === type),
     [categories, type]
+  );
+  const selectedCategory = useMemo(
+    () => categoriesForType.find((category) => category.id === selectedCategoryId),
+    [categoriesForType, selectedCategoryId]
+  );
+  const installmentPreview = useMemo(() => {
+    if (type !== "expense" || !isInstallment || !installmentCount || installmentCount <= 1) return [];
+
+    return buildInstallmentPreview({
+      amount: normalizedAmountValue,
+      installments: installmentCount,
+      installmentInputType: installmentInputType ?? "total",
+      date: txDate,
+      dueDate: resolvedPreviewDueDate,
+    });
+  }, [
+    type,
+    isInstallment,
+    installmentCount,
+    normalizedAmountValue,
+    installmentInputType,
+    txDate,
+    resolvedPreviewDueDate,
+  ]);
+  const paidInstallmentsCount = useMemo(
+    () =>
+      installmentPreview.reduce((acc, installment) => {
+        const paid = installmentPaidOverrides[installment.index] ?? installment.defaultPaid;
+        return acc + (paid ? 1 : 0);
+      }, 0),
+    [installmentPreview, installmentPaidOverrides]
   );
 
   useEffect(() => {
@@ -357,10 +548,40 @@ export function TransactionForm({
   ]);
 
   useEffect(() => {
-    if (suggestedDueDate) {
-      setValue("dueDate", suggestedDueDate);
+    if (selectedAccountIsCreditCard) {
+      const shouldAutofill = !dueDateValue || !dueDateManuallyEditedRef.current;
+      if (suggestedDueDate && shouldAutofill && dueDateValue !== suggestedDueDate) {
+        setValue("dueDate", suggestedDueDate, { shouldValidate: true });
+      }
+      return;
     }
-  }, [suggestedDueDate, setValue]);
+
+    dueDateManuallyEditedRef.current = false;
+    if (dueDateValue) {
+      setValue("dueDate", null, { shouldValidate: true });
+    }
+  }, [selectedAccountIsCreditCard, suggestedDueDate, dueDateValue, setValue]);
+
+  useEffect(() => {
+    dueDateManuallyEditedRef.current = false;
+  }, [sourceAccountId]);
+
+  useEffect(() => {
+    if (isInstallmentFlow && isPaid) {
+      setValue("isPaid", false, { shouldValidate: true });
+    }
+  }, [isInstallmentFlow, isPaid, setValue]);
+
+  useEffect(() => {
+    setInstallmentPaidOverrides({});
+  }, [
+    isInstallment,
+    installmentCount,
+    txDate,
+    dueDateValue,
+    amountValue,
+    installmentInputType,
+  ]);
 
   const onInvalid = () => {
     trackQuickValidationError();
@@ -380,11 +601,17 @@ export function TransactionForm({
 
       const status = data.isPaid ? "cleared" : "pending";
       const description = data.description?.trim() || null;
-      const computedDueDate =
-        data.type === "expense" && selectedAccountIsCreditCard
-          ? computeCreditCardDueDate(data.date, account.closing_day, account.due_day)
-          : null;
-      const resolvedDueDate = data.type === "expense" ? data.dueDate || computedDueDate : null;
+      const resolvedDueDate =
+        data.type !== "expense"
+          ? null
+          : selectedAccountIsCreditCard
+            ? normalizeCreditCardDueDate(data.date, data.dueDate ?? null, account.closing_day, account.due_day)
+            : data.dueDate ?? null;
+      const resolvedCategoryId = data.type === "transfer" ? null : data.categoryId ?? null;
+      const resolvedBucketId =
+        data.type === "transfer"
+          ? null
+          : categories.find((category) => category.id === resolvedCategoryId)?.default_bucket_id ?? null;
 
       const basePayload: Omit<TransactionInsert, "amount" | "description" | "date"> = {
         org_id: account.org_id,
@@ -392,38 +619,42 @@ export function TransactionForm({
         status,
         account_id: data.accountId,
         transfer_account_id: data.type === "transfer" ? data.transferAccountId ?? null : null,
-        category_id: data.type === "transfer" ? null : data.categoryId ?? null,
+        category_id: resolvedCategoryId,
+        bucket_id: resolvedBucketId,
         contact_id: data.contactId ?? null,
         created_by: user.id,
       };
 
       let rows: TransactionInsert[] = [];
+      const nowLocal = new Date();
+      const currentMonthStartIso = new Date(nowLocal.getFullYear(), nowLocal.getMonth(), 1).toISOString().slice(0, 10);
 
       if (data.type === "expense" && data.isInstallment && data.installments && data.installments > 1) {
-        const parts = splitAmount(data.amount, data.installments);
-        const startDate = parseISO(data.date);
-        const dueDateBase = resolvedDueDate ? parseISO(resolvedDueDate) : null;
-        const todayStr = new Date().toISOString().slice(0, 10);
+        const installmentId = createUuidV4();
+        const plan = buildInstallmentPreview({
+          amount: data.amount,
+          installments: data.installments,
+          installmentInputType: data.installmentInputType ?? "total",
+          date: data.date,
+          dueDate: resolvedDueDate,
+        });
 
-        rows = parts.map((value, index) => {
-          const thisDueDate = dueDateBase ? addMonths(dueDateBase, index).toISOString().slice(0, 10) : null;
-          const thisDate = addMonths(startDate, index).toISOString().slice(0, 10);
-          const effectiveDate = thisDueDate || thisDate;
-
-          // If user wants to pay past installments and this installment is in the past (before today)
-          // override status to cleared. Otherwise keep global status (which is likely pending if isPaid is false).
-          let rowStatus = status as "pending" | "cleared";
-          if (data.payPastInstallments && effectiveDate < todayStr) {
-            rowStatus = "cleared";
-          }
-
+        rows = plan.map((installment) => {
+          const rowPaid = installmentPaidOverrides[installment.index] ?? installment.defaultPaid;
+          const isRetroactivePaidInstallment = rowPaid && installment.date < currentMonthStartIso;
           return {
             ...basePayload,
-            amount: value,
-            description: description ? `${description} (${index + 1}/${data.installments})` : `Parcela ${index + 1}/${data.installments}`,
-            date: thisDate,
-            due_date: thisDueDate,
-            status: rowStatus,
+            amount: installment.amount,
+            description: description
+              ? `${description} (${installment.index + 1}/${data.installments})`
+              : `Parcela ${installment.index + 1}/${data.installments}`,
+            date: installment.date,
+            due_date: installment.dueDate,
+            status: rowPaid ? "cleared" : "pending",
+            installment_id: installmentId,
+            metadata: isRetroactivePaidInstallment
+              ? { exclude_from_cash_balance: true, reason: "retroactive_installment_backfill" }
+              : null,
           };
         });
       } else {
@@ -434,6 +665,7 @@ export function TransactionForm({
             description,
             date: data.date,
             due_date: resolvedDueDate,
+            installment_id: null,
           },
         ];
       }
@@ -459,10 +691,25 @@ export function TransactionForm({
         }
       }
 
-      const { data: inserted, error: txError } = await supabase
+      let insertAttempt = await supabase
         .from("transactions")
         .insert(rows)
         .select("id");
+
+      if (
+        insertAttempt.error &&
+        /installment_id/i.test(insertAttempt.error.message)
+      ) {
+        const fallbackRows = rows.map((row) => {
+          const clone = { ...row };
+          delete clone.installment_id;
+          return clone;
+        });
+        insertAttempt = await supabase.from("transactions").insert(fallbackRows).select("id");
+      }
+
+      const inserted = insertAttempt.data;
+      const txError = insertAttempt.error;
 
       if (txError) throw txError;
 
@@ -543,6 +790,8 @@ export function TransactionForm({
       setCategoryManuallyTouched(false);
       setAutoCategorized(false);
       setManualCategoryCorrection(false);
+      setInstallmentPaidOverrides({});
+      dueDateManuallyEditedRef.current = false;
       autoSuggestedCategoryRef.current = null;
       startedAtRef.current = Date.now();
       clicksRef.current = 0;
@@ -584,6 +833,35 @@ export function TransactionForm({
     }
     setValue("isInstallment", true);
     setValue("installments", installments);
+    setValue("isPaid", false);
+  };
+
+  const setSingleExpenseMode = () => {
+    setValue("isInstallment", false, { shouldValidate: true });
+    setValue("installments", null, { shouldValidate: true });
+  };
+
+  const setInstallmentExpenseMode = () => {
+    const currentInstallments = getValues("installments");
+    const nextInstallments = currentInstallments && currentInstallments > 1 ? currentInstallments : 2;
+    setValue("isInstallment", true, { shouldValidate: true });
+    setValue("installments", nextInstallments, { shouldValidate: true });
+    setValue("isPaid", false, { shouldValidate: true });
+  };
+
+  const setAllInstallmentsPaid = (paid: boolean) => {
+    const overrides = installmentPreview.reduce<Record<number, boolean>>((acc, installment) => {
+      acc[installment.index] = paid;
+      return acc;
+    }, {});
+    setInstallmentPaidOverrides(overrides);
+  };
+
+  const toggleInstallmentPaid = (index: number, paid: boolean) => {
+    setInstallmentPaidOverrides((current) => ({
+      ...current,
+      [index]: paid,
+    }));
   };
 
   return (
@@ -613,7 +891,7 @@ export function TransactionForm({
           <div className="space-y-2">
             <Label>{type === "transfer" ? "Conta origem" : "Conta/Cartao"}</Label>
             <Select
-              value={watch("accountId") || undefined}
+              value={watch("accountId")}
               onValueChange={(value) => {
                 if (value === "new") {
                   setNewAccountOpen(true);
@@ -680,9 +958,9 @@ export function TransactionForm({
           </div>
         )}
 
-        <div className="grid grid-cols-[1fr_auto] items-end gap-2">
+        <div className={`grid items-end gap-2 ${isInstallmentFlow ? "grid-cols-1" : "grid-cols-[1fr_auto]"}`}>
           <div className="space-y-2">
-            <Label>Valor</Label>
+            <Label>{amountFieldLabel}</Label>
             <Controller
               control={form.control}
               name="amount"
@@ -700,10 +978,29 @@ export function TransactionForm({
               )}
             />
             {errors.amount && <p className="text-xs text-destructive">{errors.amount.message}</p>}
+            {isInstallmentFlow && (
+              <p className="text-xs text-muted-foreground">
+                {installmentInputType === "installment"
+                  ? "O sistema vai calcular o total da compra com base na parcela."
+                  : "O sistema vai calcular o valor de cada parcela com base no total da compra."}
+              </p>
+            )}
           </div>
-          <Button type="submit" className="h-12 px-5" disabled={loading}>
-            {loading ? "Salvando..." : "Salvar"}
-          </Button>
+          {!isInstallmentFlow && (
+            <Button type="submit" className="h-12 px-5" disabled={loading}>
+              {loading ? "Salvando..." : "Salvar"}
+            </Button>
+          )}
+        </div>
+
+        <div className="space-y-2">
+          <Label>{txDateLabel}</Label>
+          <Input
+            type="date"
+            value={txDate}
+            onChange={(event) => setValue("date", event.target.value, { shouldValidate: true })}
+          />
+          {errors.date && <p className="text-xs text-destructive">{errors.date.message}</p>}
         </div>
 
         {type !== "transfer" && (
@@ -718,7 +1015,7 @@ export function TransactionForm({
               )}
             </div>
             <Select
-              value={watch("categoryId") || undefined}
+              value={watch("categoryId") ?? ""}
               onValueChange={(value) => {
                 if (value === "new") {
                   setNewCategoryOpen(true);
@@ -745,6 +1042,13 @@ export function TransactionForm({
                 </SelectItem>
               </SelectContent>
             </Select>
+            <p className="text-xs text-muted-foreground">
+              {selectedCategoryId
+                ? selectedCategory?.default_bucket_id
+                  ? "Bucket sera aplicado automaticamente com base na categoria."
+                  : "Categoria sem bucket padrao. Configure em Cadastros > Categorias."
+                : "Sem categoria selecionada, o lancamento ficara sem bucket."}
+            </p>
           </div>
         )}
 
@@ -767,69 +1071,252 @@ export function TransactionForm({
 
         {type === "expense" && (
           <div className="space-y-2">
-            <Label>Parcelamento rapido</Label>
-            <div className="flex flex-wrap gap-2">
-              <Button type="button" variant={!isInstallment ? "default" : "outline"} size="sm" onClick={() => handleInstallmentQuick(1)}>
-                A vista
-              </Button>
-              <Button type="button" variant={watch("installments") === 3 ? "default" : "outline"} size="sm" onClick={() => handleInstallmentQuick(3)}>
-                3x
-              </Button>
-              <Button type="button" variant={watch("installments") === 6 ? "default" : "outline"} size="sm" onClick={() => handleInstallmentQuick(6)}>
-                6x
-              </Button>
-              <Button type="button" variant={watch("installments") === 12 ? "default" : "outline"} size="sm" onClick={() => handleInstallmentQuick(12)}>
-                12x
-              </Button>
+            <Label>Wizard do lancamento</Label>
+            <div className="space-y-3 rounded-md border border-stroke bg-paper/60 p-3">
+              <div className="space-y-1">
+                <Label className="text-xs uppercase tracking-wide text-muted-foreground">Formato da compra</Label>
+                <Tabs
+                  value={isInstallment ? "installment" : "single"}
+                  onValueChange={(value) => {
+                    if (value === "installment") {
+                      setInstallmentExpenseMode();
+                      return;
+                    }
+                    setSingleExpenseMode();
+                  }}
+                >
+                  <TabsList className="grid w-full grid-cols-2">
+                    <TabsTrigger value="single">Lancamento unico</TabsTrigger>
+                    <TabsTrigger value="installment">Compra parcelada</TabsTrigger>
+                  </TabsList>
+                </Tabs>
+              </div>
+
+              {!isInstallment && (
+                <p className="text-xs text-muted-foreground">
+                  Sem parcelamento. O lancamento sera salvo como compra unica.
+                </p>
+              )}
+
+              {isInstallment && (
+                <div className="space-y-2">
+                  <Label className="text-xs uppercase tracking-wide text-muted-foreground">Parcelas</Label>
+                  <div className="flex flex-wrap gap-2">
+                    <Button type="button" variant={installmentCount === 2 ? "default" : "outline"} size="sm" onClick={() => handleInstallmentQuick(2)}>
+                      2x
+                    </Button>
+                    <Button type="button" variant={installmentCount === 3 ? "default" : "outline"} size="sm" onClick={() => handleInstallmentQuick(3)}>
+                      3x
+                    </Button>
+                    <Button type="button" variant={installmentCount === 6 ? "default" : "outline"} size="sm" onClick={() => handleInstallmentQuick(6)}>
+                      6x
+                    </Button>
+                    <Button type="button" variant={installmentCount === 12 ? "default" : "outline"} size="sm" onClick={() => handleInstallmentQuick(12)}>
+                      12x
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
+
+            {isInstallment && (
+              <div className="space-y-3 rounded-md border border-stroke bg-paper/60 p-3">
+                <div className="space-y-1">
+                  <Label className="text-xs uppercase tracking-wide text-muted-foreground">Valor informado</Label>
+                  <Tabs
+                    value={installmentInputType ?? "total"}
+                    onValueChange={(value) => {
+                      if (value === "total" || value === "installment") {
+                        setValue("installmentInputType", value, { shouldValidate: true });
+                      }
+                    }}
+                  >
+                    <TabsList className="grid w-full grid-cols-2">
+                      <TabsTrigger value="total">Valor da compra</TabsTrigger>
+                      <TabsTrigger value="installment">Valor da parcela</TabsTrigger>
+                    </TabsList>
+                  </Tabs>
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-xs uppercase tracking-wide text-muted-foreground">Vencimento (fatura)</Label>
+                  {selectedAccountIsCreditCard ? (
+                    <div className="flex h-10 items-center rounded-md border border-stroke px-3 text-sm">
+                      Dia {selectedAccount?.due_day ?? extractIsoDay(dueDateValue) ?? "-"}
+                    </div>
+                  ) : (
+                    <Input
+                      type="date"
+                      value={dueDateValue ?? ""}
+                      onChange={(event) => {
+                        dueDateManuallyEditedRef.current = true;
+                        setValue("dueDate", event.target.value || null, { shouldValidate: true });
+                      }}
+                    />
+                  )}
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-xs uppercase tracking-wide text-muted-foreground">Descricao</Label>
+                  <Input placeholder="Ex: Curso Tecnico" {...register("description")} />
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-xs uppercase tracking-wide text-muted-foreground">Contato (opcional)</Label>
+                  <ContactSelector value={watch("contactId")} onChange={(id) => setValue("contactId", id)} />
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-xs uppercase tracking-wide text-muted-foreground">Tags (opcional)</Label>
+                  <TagSelector value={watch("tags") || []} onChange={(tags) => setValue("tags", tags)} />
+                </div>
+              </div>
+            )}
             {errors.installments && <p className="text-xs text-destructive">{errors.installments.message}</p>}
-          </div>
-        )}
 
-        <Button
-          type="button"
-          variant="ghost"
-          className="w-full justify-between border border-stroke"
-          onClick={() => setShowDetails((open) => !open)}
-        >
-          Mais detalhes (opcional)
-          {showDetails ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-        </Button>
+            {isInstallment && installmentCount && normalizedAmountValue > 0 && (
+              <div className="mt-2 rounded-md bg-muted/50 p-2 text-sm text-muted-foreground transition-all animate-in fade-in slide-in-from-top-1">
+                <div className="flex items-center gap-2">
+                  <Calculator className="h-4 w-4" />
+                  <span className="font-medium text-foreground">Resumo do parcelamento:</span>
+                </div>
+                <div className="mt-1 pl-6">
+                  {(() => {
+                    const parts = installmentPreview.length > 0
+                      ? installmentPreview.map((installment) => installment.amount)
+                      : splitAmount(normalizedAmountValue, installmentCount || 1);
+                    const count = parts.length || installmentCount || 1;
+                    const total = parts.reduce((sum, part) => sum + part, 0);
+                    const first = parts[0];
+                    const last = parts[parts.length - 1];
 
-        {showDetails && (
-          <div className="space-y-4 rounded-lg border border-stroke bg-paper/70 p-4">
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label>Data</Label>
-                <Input type="date" {...register("date")} />
-                {errors.date && <p className="text-xs text-destructive">{errors.date.message}</p>}
+                    return (
+                      <div className="flex flex-col gap-0.5">
+                        <span>
+                          Modo de calculo:{" "}
+                          <b>{installmentInputType === "installment" ? "Valor da parcela" : "Valor da compra"}</b>
+                        </span>
+                        <span>Total da compra: <b>{formatCurrency(total)}</b> em {count}x</span>
+                        <span className="text-xs opacity-90">
+                          Valor da parcela: {formatCurrency(first)}
+                          {first !== last && ` | Ultima: ${formatCurrency(last)}`}
+                        </span>
+                      </div>
+                    );
+                  })()}
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label>Status</Label>
-                <label className="flex h-10 items-center gap-2 rounded-md border border-stroke px-3 text-sm">
-                  <input type="checkbox" {...register("isPaid")} className="h-4 w-4 rounded border-input" />
-                  Ja foi pago
-                </label>
-              </div>
-            </div>
+            )}
 
-            {type === "expense" && isInstallment && !isPaid && (
-              <div className="space-y-2 rounded-md border border-amber-200 bg-amber-50 p-3">
-                <label className="flex items-center gap-2 text-sm text-amber-900">
-                  <input type="checkbox" {...register("payPastInstallments")} className="h-4 w-4 rounded border-amber-500 text-amber-600 focus:ring-amber-500" />
-                  Marcar parcelas anteriores a hoje como pagas
-                </label>
-                <p className="text-xs text-amber-700 ml-6">
-                  Util para lancar compras antigas parceladas. As parcelas futuras continuarao pendentes.
+            {installmentPreview.length > 0 && (
+              <div className="mt-3 rounded-md border border-stroke bg-paper/70 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-sm font-medium">Wizard de parcelas</p>
+                  <div className="flex flex-wrap gap-2">
+                    <Button type="button" size="sm" variant="outline" onClick={() => setAllInstallmentsPaid(true)}>
+                      Marcar todas pagas
+                    </Button>
+                    <Button type="button" size="sm" variant="outline" onClick={() => setAllInstallmentsPaid(false)}>
+                      Marcar todas pendentes
+                    </Button>
+                    <Button type="button" size="sm" variant="ghost" onClick={() => setInstallmentPaidOverrides({})}>
+                      Usar sugestao
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="mt-2 max-h-56 overflow-y-auto rounded-md border border-stroke">
+                  {installmentPreview.map((installment) => {
+                    const paid =
+                      installmentPaidOverrides[installment.index] ?? installment.defaultPaid;
+                    return (
+                      <label
+                        key={`${installment.index}-${installment.date}`}
+                        className="flex items-center justify-between gap-3 border-b border-stroke px-3 py-2 text-sm last:border-b-0"
+                      >
+                        <div className="flex items-center gap-3">
+                          <input
+                            type="checkbox"
+                            checked={paid}
+                            onChange={(event) => toggleInstallmentPaid(installment.index, event.target.checked)}
+                            className="h-4 w-4 rounded border-input"
+                          />
+                          <div className="flex flex-col">
+                            <span className="font-medium">
+                              Parcela {installment.index + 1}/{installmentCount}
+                            </span>
+                            <span className="text-xs text-muted-foreground">
+                              Compra: {formatIsoDateBR(installment.date)}
+                              {installment.dueDate ? ` | Vence: dia ${extractIsoDay(installment.dueDate) ?? "-"}` : ""}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-semibold text-foreground">{formatCurrency(installment.amount)}</p>
+                          <p className={paid ? "text-xs font-semibold text-emerald-700" : "text-xs font-semibold text-amber-700"}>
+                            {paid ? "Pago" : "Pendente"}
+                          </p>
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {paidInstallmentsCount} de {installmentPreview.length} parcelas marcadas como pagas.
                 </p>
               </div>
             )}
+
+            {isInstallmentFlow && (
+              <div className="flex justify-end pt-1">
+                <Button type="submit" className="h-11 px-6" disabled={loading}>
+                  {loading ? "Salvando..." : "Salvar parcelamento"}
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {!isInstallmentFlow && (
+          <Button
+            type="button"
+            variant="ghost"
+            className="w-full justify-between border border-stroke"
+            onClick={() => setShowDetails((open) => !open)}
+          >
+            Mais detalhes (opcional)
+            {showDetails ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          </Button>
+        )}
+
+        {showDetails && !isInstallmentFlow && (
+          <div className="space-y-4 rounded-lg border border-stroke bg-paper/70 p-4">
+            <div className="space-y-2">
+              <Label>Status</Label>
+              <label className="flex h-10 items-center gap-2 rounded-md border border-stroke px-3 text-sm">
+                <input type="checkbox" {...register("isPaid")} className="h-4 w-4 rounded border-input" />
+                Ja foi pago
+              </label>
+            </div>
 
             {
               type === "expense" && (
                 <div className="space-y-2">
                   <Label>Vencimento (fatura)</Label>
-                  <Input type="date" {...register("dueDate")} />
+                  {selectedAccountIsCreditCard ? (
+                    <div className="flex h-10 items-center rounded-md border border-stroke px-3 text-sm">
+                      Dia {selectedAccount?.due_day ?? extractIsoDay(dueDateValue) ?? "-"}
+                    </div>
+                  ) : (
+                    <Input
+                      type="date"
+                      value={dueDateValue ?? ""}
+                      onChange={(event) => {
+                        dueDateManuallyEditedRef.current = true;
+                        setValue("dueDate", event.target.value || null, { shouldValidate: true });
+                      }}
+                    />
+                  )}
                 </div>
               )
             }
@@ -903,3 +1390,4 @@ export function TransactionForm({
     </div >
   );
 }
+

@@ -1,5 +1,15 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
+import { isRetroactiveInstallmentBackfill } from "@/lib/transactions/retroactive";
+
+function signedAmount(tx: { type: string; amount: number | string | null }) {
+  const raw = Number(tx.amount ?? 0);
+  const abs = Math.abs(raw);
+
+  if (tx.type === "income") return abs;
+  if (tx.type === "expense") return -abs;
+  return 0;
+}
 
 export async function GET(request: NextRequest) {
   const orgId = request.nextUrl.searchParams.get("org_id");
@@ -37,6 +47,15 @@ export async function GET(request: NextRequest) {
 
   const now = new Date();
   const monthStart = now.toISOString().slice(0, 7) + "-01";
+  const { data: orgSettings } = await supabase
+    .from("orgs")
+    .select("balance_start_date")
+    .eq("id", orgId)
+    .maybeSingle();
+  const balanceStartIso =
+    typeof orgSettings?.balance_start_date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(orgSettings.balance_start_date)
+      ? orgSettings.balance_start_date
+      : null;
 
   const { data: tx } = await supabase
     .from("transactions")
@@ -53,14 +72,24 @@ export async function GET(request: NextRequest) {
     .select("initial_balance")
     .eq("org_id", orgId)
     .eq("is_active", true);
-  const { data: allTx } = await supabase
+  let allTxQuery = supabase
     .from("transactions")
-    .select("amount, type")
+    .select("amount, type, date, installment_id, created_at, metadata")
     .eq("org_id", orgId)
-    .is("deleted_at", null);
+    .is("deleted_at", null)
+    .in("status", ["cleared", "reconciled"])
+    .lte("date", now.toISOString().slice(0, 10));
+
+  if (balanceStartIso) {
+    allTxQuery = allTxQuery.gte("date", balanceStartIso);
+  }
+
+  const { data: allTx } = await allTxQuery;
+  const initialBalanceTotal = accounts?.reduce((s, a) => s + Number(a.initial_balance), 0) ?? 0;
+  const balanceTx = (allTx ?? []).filter((tx) => !isRetroactiveInstallmentBackfill(tx));
   const saldoOrbita =
-    (accounts?.reduce((s, a) => s + Number(a.initial_balance), 0) ?? 0) +
-    (allTx ?? []).reduce((s, t) => s + (t.type === "transfer" ? 0 : Number(t.amount)), 0);
+    initialBalanceTotal +
+    balanceTx.reduce((s, t) => s + signedAmount(t), 0);
 
   return NextResponse.json({
     saldo_orbita: saldoOrbita,

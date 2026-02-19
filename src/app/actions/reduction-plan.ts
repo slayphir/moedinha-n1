@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { getActiveOrgIdForUser } from "@/lib/active-org";
+import { isRetroactiveInstallmentBackfill } from "@/lib/transactions/retroactive";
 
 export type ReductionSuggestion = {
   category_id: string | null;
@@ -24,11 +25,15 @@ export type ReductionPlan = {
 type NameRelation = { name: string } | { name: string }[] | null;
 
 type ExpenseRow = {
+  type: "income" | "expense" | "transfer";
+  date: string;
   amount: number | string;
   category_id: string | null;
   categories: NameRelation;
   due_date: string | null;
   installment_id: string | null;
+  created_at: string | null;
+  metadata: Record<string, unknown> | null;
 };
 
 function relationName(value: NameRelation, fallback: string): string {
@@ -58,14 +63,16 @@ export async function generateReductionPlan(
 
   const { data: txRows } = await supabase
     .from("transactions")
-    .select("amount, category_id, categories(name), due_date, installment_id")
+    .select("type, date, amount, category_id, categories(name), due_date, installment_id, created_at, metadata")
     .eq("org_id", orgId)
     .eq("type", "expense")
     .is("deleted_at", null)
     .gte("date", startDate)
     .lte("date", endDate);
 
-  const expenses = (txRows ?? []) as ExpenseRow[];
+  const expenses = ((txRows ?? []) as ExpenseRow[]).filter(
+    (row) => !isRetroactiveInstallmentBackfill(row)
+  );
   const categoryMap: Record<string, { name: string; amount: number; isFixed: boolean }> = {};
 
   expenses.forEach((row) => {
