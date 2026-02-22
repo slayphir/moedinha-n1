@@ -4,8 +4,21 @@ import { ReportsClient } from "./_components/reports-client";
 import { getReportMetrics } from "@/app/actions/reports";
 import { getFinancialProjection } from "@/app/actions/projections";
 import { startOfMonth, endOfMonth } from "date-fns";
+import { toISODateLocal } from "@/lib/utils";
 
 export const revalidate = 60;
+
+function parseDateParam(value?: string): Date | null {
+  if (!value) return null;
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    const parsedLocal = new Date(`${value}T12:00:00`);
+    return Number.isNaN(parsedLocal.getTime()) ? null : parsedLocal;
+  }
+
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
 
 export default async function ReportsPage({
   searchParams,
@@ -35,11 +48,11 @@ export default async function ReportsPage({
   const endParam = typeof searchParams.end === "string" ? searchParams.end : undefined;
 
   // Use query params if available, otherwise default to current month
-  const startDate = startParam ? new Date(startParam) : startOfMonth(now);
-  const endDate = endParam ? new Date(endParam) : endOfMonth(now);
+  const startDate = parseDateParam(startParam) ?? startOfMonth(now);
+  const endDate = parseDateParam(endParam) ?? endOfMonth(now);
 
-  const startStr = startDate.toISOString().slice(0, 10);
-  const endStr = endDate.toISOString().slice(0, 10);
+  const startStr = toISODateLocal(startDate);
+  const endStr = toISODateLocal(endDate);
 
   const metrics = await getReportMetrics(startStr, endStr);
   const projection = await getFinancialProjection(90);

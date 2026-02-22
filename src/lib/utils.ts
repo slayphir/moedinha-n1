@@ -34,3 +34,22 @@ export function formatDate(d: Date | string): string {
     year: "numeric",
   });
 }
+
+function pad2(value: number): string {
+  return String(value).padStart(2, "0");
+}
+
+export function toISODateLocal(value: Date | string): string {
+  const parsedDate = parseDateInput(value);
+  if (Number.isNaN(parsedDate.getTime())) return "";
+
+  const year = parsedDate.getFullYear();
+  const month = pad2(parsedDate.getMonth() + 1);
+  const day = pad2(parsedDate.getDate());
+  return `${year}-${month}-${day}`;
+}
+
+export function toISOYearMonthLocal(value: Date | string): string {
+  const isoDate = toISODateLocal(value);
+  return isoDate ? isoDate.slice(0, 7) : "";
+}

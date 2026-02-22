@@ -16,10 +16,9 @@ interface InvoiceViewProps {
 }
 
 export function InvoiceView({ data, onMonthChange }: InvoiceViewProps) {
-    const { account, invoice, transactions, period } = data;
+    const { account, invoice, transactions, period, limit } = data;
     const [viewingMonth, setViewingMonth] = useState(new Date(period.year, period.month, 1));
     const invoiceTotal = Math.max(Number(invoice.total) || 0, 0);
-    const availableLimit = Number(account.credit_limit || 0) - invoiceTotal;
 
     const handlePrevMonth = () => {
         const newDate = subMonths(viewingMonth, 1);
@@ -93,10 +92,13 @@ export function InvoiceView({ data, onMonthChange }: InvoiceViewProps) {
                     </CardHeader>
                     <CardContent>
                         <p className="text-2xl font-bold text-emerald-600">
-                            {formatCurrency(availableLimit)}
+                            {formatCurrency(limit.available)}
                         </p>
                         <p className="text-xs text-muted-foreground mt-1">
-                            Limite Total: {formatCurrency(account.credit_limit)}
+                            Comprometido (pendente): {formatCurrency(limit.committed)}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                            Limite Total: {formatCurrency(account.credit_limit)} ({limit.usagePct.toFixed(1)}%)
                         </p>
                     </CardContent>
                 </Card>

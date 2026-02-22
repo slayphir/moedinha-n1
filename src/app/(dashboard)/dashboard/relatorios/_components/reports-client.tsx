@@ -163,6 +163,8 @@ function CategoryDonutChart({ data, onCategoryClick }: { data: CategorySpend[]; 
 function SpendingEvolutionChart({ data, categories }: { data: ReportMetrics["timeSeries"]; categories: string[] }) {
     // Transform for stacked area: each point needs { label, cat1: val, cat2: val, ... }
     const top5Cats = categories.slice(0, 5);
+    const maxTotal = data.reduce((max, point) => Math.max(max, point.total), 0);
+    const useCompactAxis = maxTotal >= 1000;
     const chartData = data.map((point) => {
         const row: Record<string, number | string> = { label: point.label };
         top5Cats.forEach((cat) => {
@@ -192,7 +194,7 @@ function SpendingEvolutionChart({ data, categories }: { data: ReportMetrics["tim
                         <AreaChart data={chartData}>
                             <CartesianGrid strokeDasharray="3 3" />
                             <XAxis dataKey="label" tick={{ fontSize: 10 }} />
-                            <YAxis tickFormatter={(v) => `R$${(v / 1000).toFixed(0)}k`} />
+                            <YAxis tickFormatter={(v) => (useCompactAxis ? `R$${(Number(v) / 1000).toFixed(0)}k` : formatCurrency(Number(v)))} />
                             <Tooltip formatter={(value: number) => formatCurrency(value)} />
                             <Legend />
                             {allKeys.map((key, i) => (

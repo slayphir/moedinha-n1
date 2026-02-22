@@ -26,6 +26,7 @@ type NameRelation = { name: string } | { name: string }[] | null;
 
 type ExpenseRow = {
   type: "income" | "expense" | "transfer";
+  status: "pending" | "cleared" | "reconciled" | "cancelled" | string;
   date: string;
   amount: number | string;
   category_id: string | null;
@@ -63,7 +64,7 @@ export async function generateReductionPlan(
 
   const { data: txRows } = await supabase
     .from("transactions")
-    .select("type, date, amount, category_id, categories(name), due_date, installment_id, created_at, metadata")
+    .select("type, status, date, amount, category_id, categories(name), due_date, installment_id, created_at, metadata")
     .eq("org_id", orgId)
     .eq("type", "expense")
     .is("deleted_at", null)

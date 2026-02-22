@@ -17,6 +17,13 @@ const nextConfig = {
     typescript: {
         ignoreBuildErrors: true,
     },
+    webpack: (config, { dev }) => {
+      if (dev) {
+        // Avoid .next filesystem cache issues in synced folders (e.g. OneDrive).
+        config.cache = { type: "memory" };
+      }
+      return config;
+    },
 };
 
 export default nextConfig;

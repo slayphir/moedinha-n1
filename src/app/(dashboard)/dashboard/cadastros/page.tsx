@@ -29,7 +29,7 @@ export default async function CadastrosPage({
   const monthEnd = endOfMonth(monthBase);
   const budgetMonth = `${monthStart.getFullYear()}-${String(monthStart.getMonth() + 1).padStart(2, "0")}-01`;
 
-  const [accounts, categories, tags, contacts, budgets, txMonth] = await Promise.all([
+  const [accounts, categories, tags, contacts, budgets, buckets, txMonth, incomeSources, incomeRuns] = await Promise.all([
     supabase
       .from("accounts")
       .select("id, name, type, is_active, is_credit_card, credit_limit, closing_day, due_day")
@@ -48,6 +48,10 @@ export default async function CadastrosPage({
       .eq("org_id", orgId)
       .eq("month", budgetMonth),
     supabase
+      .from("distribution_buckets")
+      .select("id, name")
+      .order("sort_order", { ascending: true }),
+    supabase
       .from("transactions")
       .select("category_id, amount")
       .eq("org_id", orgId)
@@ -55,6 +59,18 @@ export default async function CadastrosPage({
       .is("deleted_at", null)
       .gte("date", monthStart.toISOString().slice(0, 10))
       .lte("date", monthEnd.toISOString().slice(0, 10)),
+    supabase
+      .from("income_sources")
+      .select("id, name, planned_amount, day_of_month, account_id, category_id, is_active, notes")
+      .eq("org_id", orgId)
+      .order("name"),
+    supabase
+      .from("income_source_runs")
+      .select("id, source_id, month, expected_date, planned_amount, actual_amount, status, received_at, transaction_id, source:income_sources(name)")
+      .eq("org_id", orgId)
+      .eq("month", budgetMonth)
+      .order("expected_date")
+      .order("created_at"),
   ]);
 
   const spentByCategory: Record<string, number> = {};
@@ -72,6 +88,24 @@ export default async function CadastrosPage({
       type: category.type,
       default_bucket_id: category.default_bucket_id,
       default_bucket_name: bucketName,
+    };
+  });
+
+  const normalizedIncomeRuns = (incomeRuns.data ?? []).map((run) => {
+    const relation = (run as { source?: { name?: string } | Array<{ name?: string }> | null }).source;
+    const sourceName = Array.isArray(relation) ? relation[0]?.name ?? null : relation?.name ?? null;
+
+    return {
+      id: run.id,
+      source_id: run.source_id,
+      month: run.month,
+      expected_date: run.expected_date,
+      planned_amount: Number(run.planned_amount ?? 0),
+      actual_amount: run.actual_amount !== null ? Number(run.actual_amount) : null,
+      status: run.status,
+      received_at: run.received_at,
+      transaction_id: run.transaction_id,
+      source_name: sourceName,
     };
   });
 
@@ -113,8 +147,20 @@ export default async function CadastrosPage({
     <CadastrosClient
       accounts={accounts.data ?? []}
       categories={normalizedCategories}
+      buckets={buckets.data ?? []}
       tags={tags.data ?? []}
       contacts={contacts.data ?? []}
+      incomeSources={(incomeSources.data ?? []).map((source) => ({
+        id: source.id,
+        name: source.name,
+        planned_amount: Number(source.planned_amount ?? 0),
+        day_of_month: Number(source.day_of_month ?? 1),
+        account_id: source.account_id,
+        category_id: source.category_id,
+        is_active: Boolean(source.is_active),
+        notes: source.notes,
+      }))}
+      incomeRuns={normalizedIncomeRuns}
       initialTab={tab}
       budgetMonth={budgetMonth}
       categoryBudgetMap={budgetMap}

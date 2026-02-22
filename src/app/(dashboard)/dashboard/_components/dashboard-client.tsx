@@ -13,6 +13,7 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
+  LabelList,
   Line,
   LineChart,
   ResponsiveContainer,
@@ -157,6 +158,14 @@ function shortDateLabel(value: string): string {
 function formatRangeDate(isoDate: string): string {
   if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(isoDate)) return isoDate;
   return `${isoDate.slice(8, 10)}/${isoDate.slice(5, 7)}/${isoDate.slice(0, 4)}`;
+}
+
+function formatCompactTick(value: number): string {
+  const abs = Math.abs(value);
+  if (!Number.isFinite(value)) return "0";
+  if (abs >= 1_000_000) return `${(value / 1_000_000).toFixed(abs >= 10_000_000 ? 0 : 1)}M`;
+  if (abs >= 1_000) return `${(value / 1_000).toFixed(abs >= 10_000 ? 0 : 1)}k`;
+  return value.toLocaleString("pt-BR", { maximumFractionDigits: 0 });
 }
 
 export function DashboardClient({
@@ -467,14 +476,17 @@ export function DashboardClient({
             {monthSnapshot && monthSnapshot.bucket_data.length > 0 ? (
               <>
                 {monthSnapshot.bucket_data.map((bucket) => {
-                  const status = bucketStatus(bucket.spend_pct);
+                  const hasBudget = bucket.budget > 0;
+                  const visualSpendPct = hasBudget ? bucket.spend_pct : bucket.spend > 0 ? 100 : 0;
+                  const status = hasBudget ? bucketStatus(bucket.spend_pct) : bucket.spend > 0 ? "critical" : "ok";
+                  const spendPctLabel = hasBudget ? `${bucket.spend_pct.toFixed(1)}%` : bucket.spend > 0 ? "Sem orcamento" : "0.0%";
                   const name = bucketNames[bucket.bucket_id] ?? bucket.bucket_id;
                   return (
                     <div key={bucket.bucket_id} className="space-y-2">
                       <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
                         <span className="font-medium text-ink">{name}</span>
                         <span className="text-ink/75">
-                          {formatCurrency(bucket.spend)} / {formatCurrency(bucket.budget)} ({bucket.spend_pct.toFixed(1)}%)
+                          {formatCurrency(bucket.spend)} / {formatCurrency(bucket.budget)} ({spendPctLabel})
                         </span>
                       </div>
                       <div className="relative h-3 w-full overflow-hidden rounded-full bg-stroke/85">
@@ -484,7 +496,7 @@ export function DashboardClient({
                         <div
                           className={`h-full rounded-full progress-animated ${status === "critical" ? "bg-destructive" : status === "warn" ? "bg-bronze" : "bg-vault-700"
                             }`}
-                          style={{ width: `${Math.min(100, bucket.spend_pct)}%` }}
+                          style={{ width: `${Math.min(100, visualSpendPct)}%` }}
                         />
                       </div>
                       <div className="text-xs text-ink/70">
@@ -596,12 +608,12 @@ export function DashboardClient({
             {categoryChartData.length > 0 ? (
               <div className="h-[280px]">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={categoryChartData} layout="vertical" margin={{ left: 10, right: 10, top: 0, bottom: 0 }}>
+                  <BarChart data={categoryChartData} layout="vertical" margin={{ left: 10, right: 46, top: 0, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="rgb(226 235 225)" />
                     <XAxis
                       type="number"
                       tickFormatter={(value) =>
-                        categoryView === "value" ? `${Math.round(Number(value) / 1000)}k` : `${Number(value).toFixed(0)}%`
+                        categoryView === "value" ? formatCompactTick(Number(value)) : `${Number(value).toFixed(0)}%`
                       }
                     />
                     <YAxis type="category" dataKey="name" width={130} tick={{ fontSize: 11 }} />
@@ -616,6 +628,14 @@ export function DashboardClient({
                       }}
                     />
                     <Bar dataKey={categoryView === "value" ? "value" : "percent"} radius={[0, 4, 4, 0]}>
+                      <LabelList
+                        dataKey={categoryView === "value" ? "value" : "percent"}
+                        position="right"
+                        offset={8}
+                        formatter={(value: number) =>
+                          categoryView === "value" ? formatCurrency(Number(value)) : `${Number(value).toFixed(1)}%`
+                        }
+                      />
                       {categoryChartData.map((_, index) => (
                         <Cell key={index} fill={CHART_COLORS[index % CHART_COLORS.length]} />
                       ))}

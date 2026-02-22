@@ -174,7 +174,7 @@ export default async function DashboardPage({
 
   let txBalanceQuery = supabase
     .from("transactions")
-    .select("amount, type, date, deleted_at, installment_id, created_at, metadata")
+    .select("amount, type, status, date, deleted_at, installment_id, created_at, metadata")
     .eq("org_id", orgId)
     .is("deleted_at", null)
     .in("status", ["cleared", "reconciled"])

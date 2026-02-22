@@ -30,6 +30,7 @@ import { useFinancialData } from "@/hooks/use-financial-data";
 import { updateTransaction, deleteTransaction, type UpdateInput } from "@/app/actions/transactions";
 import type { LancamentoRow } from "./lancamentos-client";
 import { TagSelector } from "./tag-selector";
+import { toISODateLocal } from "@/lib/utils";
 
 const schema = z.object({
   description: z.string().default(""),
@@ -85,7 +86,7 @@ export function EditTransactionDialog({
     defaultValues: {
       description: "",
       amount: 0,
-      date: new Date().toISOString().slice(0, 10),
+      date: toISODateLocal(new Date()),
       accountId: "",
       categoryId: null,
       status: "pending",
@@ -245,14 +246,14 @@ export function EditTransactionDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-hidden p-0 sm:max-w-[560px]">
+      <DialogContent className="flex max-h-[92dvh] w-[calc(100vw-1rem)] flex-col overflow-hidden p-0 sm:w-full sm:max-w-[560px]">
         <DialogHeader className="px-6 pt-6">
           <DialogTitle>Editar {typeLabel}</DialogTitle>
           <DialogDescription>Faca alteracoes no lancamento selecionado.</DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="flex max-h-[calc(90vh-72px)] flex-col">
-          <div className="flex-1 space-y-4 overflow-y-auto px-6 py-2">
+        <form onSubmit={handleSubmit(onSubmit)} className="flex min-h-0 flex-1 flex-col">
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-2">
           {hasInstallmentSeries && installmentMeta && (
             <div className="space-y-3 rounded-md border border-stroke bg-paper/60 p-3">
               <p className="text-xs text-muted-foreground">
@@ -455,7 +456,7 @@ export function EditTransactionDialog({
           </div>
           </div>
 
-          <DialogFooter className="gap-2 border-t border-stroke/60 bg-background px-6 py-4 sm:justify-between">
+          <DialogFooter className="gap-2 border-t border-stroke/60 bg-background px-6 py-4 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:justify-between">
             {deleteConfirmOpen ? (
               <div className="flex w-full flex-col gap-2 rounded-md border border-destructive/20 bg-destructive/10 px-4 py-2 sm:flex-row sm:items-center sm:justify-between">
                 <span className="text-sm font-medium text-destructive">Tem certeza?</span>

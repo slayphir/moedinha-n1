@@ -4,6 +4,14 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { deleteCategoryBudget, upsertCategoryBudget, upsertCategoryBudgetsBatch } from "@/app/actions/budgets";
+import { assignBucketToCategoriesBatch } from "@/app/actions/categories";
+import {
+  generateIncomeRunsForMonth,
+  markIncomeRunAsReceived,
+  saveIncomeSource,
+  toggleIncomeSourceActive,
+  updateIncomeRun,
+} from "@/app/actions/income-sources";
 import { CreateContactDialog } from "./create-contact-dialog";
 import { EditContactDialog } from "./edit-contact-dialog";
 import { CreateAccountDialog } from "./create-account-dialog";
@@ -14,7 +22,8 @@ import { EditCategoryDialog } from "./edit-category-dialog";
 import { EditTagDialog } from "./edit-tag-dialog";
 import { Contact } from "@/hooks/use-financial-data";
 import { formatCurrency } from "@/lib/utils";
-import { FolderOpen, Pencil, Tag, Users, Wallet, Plus } from "lucide-react";
+import { CircleDollarSign, FolderOpen, Loader2, Pencil, Plus, Search, Tag, Users, Wallet, WandSparkles } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -37,11 +46,40 @@ type AccountRow = {
   due_day?: number | null;
 };
 
+type IncomeSourceRow = {
+  id: string;
+  name: string;
+  planned_amount: number;
+  day_of_month: number;
+  account_id: string;
+  category_id?: string | null;
+  is_active: boolean;
+  notes?: string | null;
+};
+
+type IncomeRunStatus = "pending" | "received" | "skipped" | "cancelled";
+
+type IncomeRunRow = {
+  id: string;
+  source_id: string;
+  month: string;
+  expected_date: string;
+  planned_amount: number;
+  actual_amount?: number | null;
+  status: IncomeRunStatus;
+  received_at?: string | null;
+  transaction_id?: string | null;
+  source_name?: string | null;
+};
+
 type Props = {
   accounts: AccountRow[];
   categories: { id: string; name: string; type: string; default_bucket_id?: string | null; default_bucket_name?: string | null }[];
+  buckets: { id: string; name: string }[];
   tags: { id: string; name: string }[];
   contacts: Contact[];
+  incomeSources: IncomeSourceRow[];
+  incomeRuns: IncomeRunRow[];
   initialTab: string;
   budgetMonth: string;
   categoryBudgetMap: Record<string, CategoryBudgetInfo>;
@@ -54,11 +92,70 @@ const BUDGET_WIZARD_STEPS = [
   { id: 3, label: "Revisao" },
 ] as const;
 
+const CATEGORY_BUCKET_WIZARD_STEPS = [
+  { id: 1, label: "Categorias" },
+  { id: 2, label: "Bucket" },
+  { id: 3, label: "Revisao" },
+] as const;
+
+function normalizeSearchTerm(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+function parseDecimalInput(value: string): number | null {
+  const raw = value.trim();
+  if (!raw) return null;
+
+  const cleaned = raw.replace(/[^0-9,.\-]/g, "");
+  if (!cleaned) return null;
+
+  const lastComma = cleaned.lastIndexOf(",");
+  const lastDot = cleaned.lastIndexOf(".");
+  const sepIndex = Math.max(lastComma, lastDot);
+
+  let normalized: string;
+  if (sepIndex === -1) {
+    normalized = cleaned.replace(/[^\d\-]/g, "");
+  } else {
+    const integerPart = cleaned.slice(0, sepIndex).replace(/[^\d\-]/g, "");
+    const decimalPart = cleaned.slice(sepIndex + 1).replace(/[^\d]/g, "");
+    normalized = `${integerPart}.${decimalPart}`;
+  }
+
+  const parsed = Number(normalized);
+  if (!Number.isFinite(parsed)) return null;
+  return parsed;
+}
+
+function formatDecimalForInput(value: number): string {
+  return value.toFixed(2).replace(".", ",");
+}
+
+function formatYearMonthLabel(value: string): string {
+  if (!/^\d{4}-\d{2}$/.test(value)) return value;
+  const [yearRaw, monthRaw] = value.split("-");
+  const year = Number(yearRaw);
+  const month = Number(monthRaw);
+  if (!Number.isFinite(year) || !Number.isFinite(month) || month < 1 || month > 12) return value;
+
+  return new Intl.DateTimeFormat("pt-BR", {
+    month: "long",
+    year: "numeric",
+  }).format(new Date(year, month - 1, 1, 12, 0, 0, 0));
+}
+
 export function CadastrosClient({
   accounts,
   categories,
+  buckets,
   tags,
   contacts,
+  incomeSources,
+  incomeRuns,
   initialTab,
   budgetMonth,
   categoryBudgetMap,
@@ -100,10 +197,84 @@ export function CadastrosClient({
   const [assistantThreshold, setAssistantThreshold] = useState("80");
   const [assistantSelected, setAssistantSelected] = useState<Record<string, boolean>>({});
   const [assistantStep, setAssistantStep] = useState<1 | 2 | 3>(1);
+  const [categorySearch, setCategorySearch] = useState("");
+  const [categoryBucketWizardOpen, setCategoryBucketWizardOpen] = useState(false);
+  const [categoryBucketWizardSaving, setCategoryBucketWizardSaving] = useState(false);
+  const [categoryBucketWizardStep, setCategoryBucketWizardStep] = useState<1 | 2 | 3>(1);
+  const [categoryBucketWizardSearch, setCategoryBucketWizardSearch] = useState("");
+  const [categoryBucketWizardOnlyWithoutBucket, setCategoryBucketWizardOnlyWithoutBucket] = useState(true);
+  const [categoryBucketWizardSelected, setCategoryBucketWizardSelected] = useState<Record<string, boolean>>({});
+  const [categoryBucketWizardBucketId, setCategoryBucketWizardBucketId] = useState("");
+  const [categoryBucketWizardBackfill, setCategoryBucketWizardBackfill] = useState(true);
+
+  const [incomeSourceDialogOpen, setIncomeSourceDialogOpen] = useState(false);
+  const [incomeSourceSaving, setIncomeSourceSaving] = useState(false);
+  const [editingIncomeSourceId, setEditingIncomeSourceId] = useState<string | null>(null);
+  const [incomeSourceName, setIncomeSourceName] = useState("");
+  const [incomeSourcePlannedAmount, setIncomeSourcePlannedAmount] = useState("");
+  const [incomeSourceDayOfMonth, setIncomeSourceDayOfMonth] = useState("5");
+  const [incomeSourceAccountId, setIncomeSourceAccountId] = useState("");
+  const [incomeSourceCategoryId, setIncomeSourceCategoryId] = useState("none");
+  const [incomeSourceIsActive, setIncomeSourceIsActive] = useState(true);
+  const [incomeSourceNotes, setIncomeSourceNotes] = useState("");
+  const [incomeRunsGenerating, setIncomeRunsGenerating] = useState(false);
+  const [incomeToggleBusyById, setIncomeToggleBusyById] = useState<Record<string, boolean>>({});
+  const [incomeRunDialogOpen, setIncomeRunDialogOpen] = useState(false);
+  const [selectedIncomeRun, setSelectedIncomeRun] = useState<IncomeRunRow | null>(null);
+  const [incomeRunReceivedAmount, setIncomeRunReceivedAmount] = useState("");
+  const [incomeRunReceivedDate, setIncomeRunReceivedDate] = useState("");
+  const [incomeRunSaving, setIncomeRunSaving] = useState(false);
+  const [incomeRunEditDialogOpen, setIncomeRunEditDialogOpen] = useState(false);
+  const [editingIncomeRun, setEditingIncomeRun] = useState<IncomeRunRow | null>(null);
+  const [incomeRunEditPlannedAmount, setIncomeRunEditPlannedAmount] = useState("");
+  const [incomeRunEditExpectedDate, setIncomeRunEditExpectedDate] = useState("");
+  const [incomeRunEditStatus, setIncomeRunEditStatus] = useState<"pending" | "skipped" | "cancelled">("pending");
+  const [incomeRunEditSaving, setIncomeRunEditSaving] = useState(false);
 
   const expenseCategories = useMemo(
     () => categories.filter((category) => category.type === "expense"),
     [categories]
+  );
+
+  const normalizedCategorySearch = normalizeSearchTerm(categorySearch);
+  const filteredCategories = useMemo(
+    () =>
+      categories.filter((category) => {
+        if (!normalizedCategorySearch) return true;
+        const normalizedName = normalizeSearchTerm(category.name);
+        return normalizedName.includes(normalizedCategorySearch);
+      }),
+    [categories, normalizedCategorySearch]
+  );
+
+  const bucketWizardEligibleCategories = useMemo(
+    () => categories.filter((category) => category.type !== "transfer"),
+    [categories]
+  );
+  const normalizedBucketWizardSearch = normalizeSearchTerm(categoryBucketWizardSearch);
+  const bucketWizardCategories = useMemo(
+    () =>
+      bucketWizardEligibleCategories.filter((category) => {
+        if (categoryBucketWizardOnlyWithoutBucket && category.default_bucket_id) return false;
+        if (!normalizedBucketWizardSearch) return true;
+        return normalizeSearchTerm(category.name).includes(normalizedBucketWizardSearch);
+      }),
+    [
+      bucketWizardEligibleCategories,
+      categoryBucketWizardOnlyWithoutBucket,
+      normalizedBucketWizardSearch,
+    ]
+  );
+  const bucketWizardSelectedCategories = useMemo(
+    () => bucketWizardCategories.filter((category) => categoryBucketWizardSelected[category.id]),
+    [bucketWizardCategories, categoryBucketWizardSelected]
+  );
+  const bucketWizardSelectedCount = bucketWizardSelectedCategories.length;
+  const allBucketWizardSelected =
+    bucketWizardCategories.length > 0 && bucketWizardSelectedCount === bucketWizardCategories.length;
+  const selectedWizardBucket = useMemo(
+    () => buckets.find((bucket) => bucket.id === categoryBucketWizardBucketId) ?? null,
+    [buckets, categoryBucketWizardBucketId]
   );
 
   const assistantCategories = useMemo(
@@ -119,11 +290,333 @@ export function CadastrosClient({
     [assistantCategories, assistantSelected]
   );
 
+  const accountNameById = useMemo(
+    () => Object.fromEntries(accounts.map((account) => [account.id, account.name])),
+    [accounts]
+  );
+  const incomeCategoryOptions = useMemo(
+    () => categories.filter((category) => category.type === "income"),
+    [categories]
+  );
+  const incomeSourceById = useMemo(
+    () => Object.fromEntries(incomeSources.map((source) => [source.id, source])),
+    [incomeSources]
+  );
+  const incomeMonthInput = budgetMonth.slice(0, 7);
+  const incomeMonthLabel = useMemo(() => formatYearMonthLabel(incomeMonthInput), [incomeMonthInput]);
+  const pendingIncomeRuns = useMemo(
+    () => incomeRuns.filter((run) => run.status === "pending"),
+    [incomeRuns]
+  );
+
   function handleTabChange(value: string) {
     const params = new URLSearchParams(typeof window === "undefined" ? "" : window.location.search);
     params.set("tab", value);
     setCurrentTab(value);
     router.push(`${pathname}?${params.toString()}`);
+  }
+
+  function getTodayIsoDate(): string {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const day = String(now.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }
+
+  function openIncomeSourceDialog(source?: IncomeSourceRow) {
+    const defaultAccountId = accounts.find((account) => account.is_active)?.id ?? accounts[0]?.id ?? "";
+    const hasIncomeCategory =
+      !!source?.category_id && incomeCategoryOptions.some((category) => category.id === source.category_id);
+
+    setEditingIncomeSourceId(source?.id ?? null);
+    setIncomeSourceName(source?.name ?? "");
+    setIncomeSourcePlannedAmount(source ? formatDecimalForInput(Number(source.planned_amount ?? 0)) : "");
+    setIncomeSourceDayOfMonth(source ? String(Number(source.day_of_month ?? 1)) : "5");
+    setIncomeSourceAccountId(source?.account_id ?? defaultAccountId);
+    setIncomeSourceCategoryId(hasIncomeCategory ? (source?.category_id as string) : "none");
+    setIncomeSourceIsActive(source?.is_active ?? true);
+    setIncomeSourceNotes(source?.notes ?? "");
+    setIncomeSourceDialogOpen(true);
+  }
+
+  function closeIncomeSourceDialog(open: boolean) {
+    setIncomeSourceDialogOpen(open);
+    if (!open) {
+      setEditingIncomeSourceId(null);
+    }
+  }
+
+  async function handleSaveIncomeSource() {
+    const plannedAmount = parseDecimalInput(incomeSourcePlannedAmount);
+    const dayOfMonth = Number(incomeSourceDayOfMonth);
+    const name = incomeSourceName.trim();
+
+    if (!name) {
+      toast({
+        variant: "destructive",
+        title: "Nome obrigatorio",
+        description: "Informe um nome para a fonte de renda.",
+      });
+      return;
+    }
+
+    if (plannedAmount === null || plannedAmount < 0) {
+      toast({
+        variant: "destructive",
+        title: "Valor invalido",
+        description: "Informe um valor planejado valido.",
+      });
+      return;
+    }
+
+    if (!Number.isInteger(dayOfMonth) || dayOfMonth < 1 || dayOfMonth > 31) {
+      toast({
+        variant: "destructive",
+        title: "Dia invalido",
+        description: "Informe um dia entre 1 e 31.",
+      });
+      return;
+    }
+
+    if (!incomeSourceAccountId) {
+      toast({
+        variant: "destructive",
+        title: "Conta obrigatoria",
+        description: "Selecione a conta de recebimento.",
+      });
+      return;
+    }
+
+    setIncomeSourceSaving(true);
+    try {
+      const result = await saveIncomeSource({
+        id: editingIncomeSourceId ?? undefined,
+        name,
+        plannedAmount: Number(plannedAmount.toFixed(4)),
+        dayOfMonth,
+        accountId: incomeSourceAccountId,
+        categoryId: incomeSourceCategoryId === "none" ? null : incomeSourceCategoryId,
+        isActive: incomeSourceIsActive,
+        notes: incomeSourceNotes.trim() || null,
+      });
+
+      if (result.error) {
+        toast({
+          variant: "destructive",
+          title: "Erro ao salvar fonte",
+          description: result.error,
+        });
+        return;
+      }
+
+      toast({
+        title: editingIncomeSourceId ? "Fonte atualizada" : "Fonte criada",
+        description: `${name} foi salva com sucesso.`,
+      });
+      setIncomeSourceDialogOpen(false);
+      setEditingIncomeSourceId(null);
+      router.refresh();
+    } finally {
+      setIncomeSourceSaving(false);
+    }
+  }
+
+  async function handleToggleIncomeSource(source: IncomeSourceRow) {
+    setIncomeToggleBusyById((current) => ({ ...current, [source.id]: true }));
+    try {
+      const result = await toggleIncomeSourceActive({ id: source.id, isActive: !source.is_active });
+      if (result.error) {
+        toast({
+          variant: "destructive",
+          title: "Erro ao atualizar fonte",
+          description: result.error,
+        });
+        return;
+      }
+
+      toast({
+        title: !source.is_active ? "Fonte ativada" : "Fonte pausada",
+        description: source.name,
+      });
+      router.refresh();
+    } finally {
+      setIncomeToggleBusyById((current) => ({ ...current, [source.id]: false }));
+    }
+  }
+
+  async function handleGenerateIncomeRuns() {
+    setIncomeRunsGenerating(true);
+    try {
+      const result = await generateIncomeRunsForMonth({ month: incomeMonthInput });
+      if (result.error) {
+        toast({
+          variant: "destructive",
+          title: "Erro ao gerar pre-lancamentos",
+          description: result.error,
+        });
+        return;
+      }
+
+      toast({
+        title: "Pre-lancamentos atualizados",
+        description: `Criados: ${result.created ?? 0} | Atualizados: ${result.updated ?? 0}`,
+      });
+      router.refresh();
+    } finally {
+      setIncomeRunsGenerating(false);
+    }
+  }
+
+  function openIncomeRunDialog(run: IncomeRunRow) {
+    setSelectedIncomeRun(run);
+    setIncomeRunReceivedAmount(formatDecimalForInput(Number(run.planned_amount ?? 0)));
+    setIncomeRunReceivedDate(run.expected_date || getTodayIsoDate());
+    setIncomeRunDialogOpen(true);
+  }
+
+  function openIncomeRunEditDialog(run: IncomeRunRow) {
+    if (run.status === "received") {
+      toast({
+        variant: "destructive",
+        title: "Pre-lancamento bloqueado",
+        description: "Itens ja recebidos nao podem ser editados.",
+      });
+      return;
+    }
+
+    setEditingIncomeRun(run);
+    setIncomeRunEditPlannedAmount(formatDecimalForInput(Number(run.planned_amount ?? 0)));
+    setIncomeRunEditExpectedDate(run.expected_date || getTodayIsoDate());
+    setIncomeRunEditStatus(run.status === "pending" || run.status === "skipped" || run.status === "cancelled" ? run.status : "pending");
+    setIncomeRunEditDialogOpen(true);
+  }
+
+  async function handleMarkIncomeRunAsReceived() {
+    if (!selectedIncomeRun) return;
+
+    const amount = parseDecimalInput(incomeRunReceivedAmount);
+    if (amount === null || amount <= 0) {
+      toast({
+        variant: "destructive",
+        title: "Valor invalido",
+        description: "Informe um valor recebido maior que zero.",
+      });
+      return;
+    }
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(incomeRunReceivedDate)) {
+      toast({
+        variant: "destructive",
+        title: "Data invalida",
+        description: "Informe a data de recebimento no formato correto.",
+      });
+      return;
+    }
+
+    setIncomeRunSaving(true);
+    try {
+      const result = await markIncomeRunAsReceived({
+        runId: selectedIncomeRun.id,
+        receivedAmount: Number(amount.toFixed(4)),
+        receivedDate: incomeRunReceivedDate,
+      });
+
+      if (result.error) {
+        toast({
+          variant: "destructive",
+          title: "Erro ao confirmar recebimento",
+          description: result.error,
+        });
+        return;
+      }
+
+      toast({
+        title: "Recebimento confirmado",
+        description: "Lancamento de receita criado com sucesso.",
+      });
+      setIncomeRunDialogOpen(false);
+      setSelectedIncomeRun(null);
+      router.refresh();
+    } finally {
+      setIncomeRunSaving(false);
+    }
+  }
+
+  async function handleSaveIncomeRunEdit() {
+    if (!editingIncomeRun) return;
+
+    const amount = parseDecimalInput(incomeRunEditPlannedAmount);
+    if (amount === null || amount < 0) {
+      toast({
+        variant: "destructive",
+        title: "Valor invalido",
+        description: "Informe um valor planejado valido.",
+      });
+      return;
+    }
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(incomeRunEditExpectedDate)) {
+      toast({
+        variant: "destructive",
+        title: "Data invalida",
+        description: "Informe a data prevista no formato correto.",
+      });
+      return;
+    }
+
+    setIncomeRunEditSaving(true);
+    try {
+      const result = await updateIncomeRun({
+        runId: editingIncomeRun.id,
+        plannedAmount: Number(amount.toFixed(4)),
+        expectedDate: incomeRunEditExpectedDate,
+        status: incomeRunEditStatus,
+      });
+
+      if (result.error) {
+        toast({
+          variant: "destructive",
+          title: "Erro ao editar pre-lancamento",
+          description: result.error,
+        });
+        return;
+      }
+
+      toast({
+        title: "Pre-lancamento atualizado",
+        description: "As alteracoes foram salvas.",
+      });
+      setIncomeRunEditDialogOpen(false);
+      setEditingIncomeRun(null);
+      router.refresh();
+    } finally {
+      setIncomeRunEditSaving(false);
+    }
+  }
+
+  function handleMonthInputChange(value: string) {
+    if (!value || !/^\d{4}-\d{2}$/.test(value)) return;
+
+    const params = new URLSearchParams(typeof window === "undefined" ? "" : window.location.search);
+    params.set("month", value);
+    params.set("tab", currentTab);
+    router.push(`${pathname}?${params.toString()}`);
+  }
+
+  function renderIncomeRunStatus(status: IncomeRunStatus) {
+    switch (status) {
+      case "received":
+        return <Badge className="bg-emerald-600 text-white hover:bg-emerald-600">Recebido</Badge>;
+      case "pending":
+        return <Badge variant="secondary">Pendente</Badge>;
+      case "skipped":
+        return <Badge variant="outline">Ignorado</Badge>;
+      case "cancelled":
+        return <Badge variant="destructive">Cancelado</Badge>;
+      default:
+        return <Badge variant="outline">{status}</Badge>;
+    }
   }
 
   useEffect(() => {
@@ -138,9 +631,132 @@ export function CadastrosClient({
     });
   }, [budgetAssistantOpen, assistantCategories]);
 
+  useEffect(() => {
+    if (!categoryBucketWizardOpen) return;
+
+    setCategoryBucketWizardSelected((current) => {
+      const next: Record<string, boolean> = {};
+      for (const category of bucketWizardCategories) {
+        next[category.id] = current[category.id] ?? true;
+      }
+      return next;
+    });
+  }, [categoryBucketWizardOpen, bucketWizardCategories]);
+
   function openBudgetAssistant() {
     setAssistantStep(1);
     setBudgetAssistantOpen(true);
+  }
+
+  function openCategoryBucketWizard() {
+    setCategoryBucketWizardStep(1);
+    setCategoryBucketWizardSearch("");
+    setCategoryBucketWizardOnlyWithoutBucket(true);
+    setCategoryBucketWizardBucketId("");
+    setCategoryBucketWizardBackfill(true);
+    setCategoryBucketWizardOpen(true);
+  }
+
+  function toggleBucketWizardCategory(categoryId: string, checked: boolean) {
+    setCategoryBucketWizardSelected((current) => ({
+      ...current,
+      [categoryId]: checked,
+    }));
+  }
+
+  function setAllBucketWizardSelection(checked: boolean) {
+    const next: Record<string, boolean> = {};
+    for (const category of bucketWizardCategories) {
+      next[category.id] = checked;
+    }
+    setCategoryBucketWizardSelected(next);
+  }
+
+  function handleCategoryBucketWizardNextStep() {
+    if (categoryBucketWizardStep === 1) {
+      if (bucketWizardSelectedCount === 0) {
+        toast({
+          variant: "destructive",
+          title: "Nenhuma categoria selecionada",
+          description: "Marque pelo menos uma categoria para continuar.",
+        });
+        return;
+      }
+      setCategoryBucketWizardStep(2);
+      return;
+    }
+
+    if (!categoryBucketWizardBucketId) {
+      toast({
+        variant: "destructive",
+        title: "Bucket obrigatorio",
+        description: "Selecione um bucket para aplicar nas categorias.",
+      });
+      return;
+    }
+
+    setCategoryBucketWizardStep(3);
+  }
+
+  function handleCategoryBucketWizardPrevStep() {
+    if (categoryBucketWizardStep === 3) {
+      setCategoryBucketWizardStep(2);
+      return;
+    }
+    if (categoryBucketWizardStep === 2) {
+      setCategoryBucketWizardStep(1);
+    }
+  }
+
+  async function handleApplyCategoryBucketWizard() {
+    if (bucketWizardSelectedCount === 0) {
+      toast({
+        variant: "destructive",
+        title: "Nenhuma categoria selecionada",
+        description: "Marque pelo menos uma categoria para aplicar o wizard.",
+      });
+      return;
+    }
+
+    if (!categoryBucketWizardBucketId) {
+      toast({
+        variant: "destructive",
+        title: "Bucket obrigatorio",
+        description: "Selecione um bucket para continuar.",
+      });
+      return;
+    }
+
+    setCategoryBucketWizardSaving(true);
+    try {
+      const result = await assignBucketToCategoriesBatch({
+        categoryIds: bucketWizardSelectedCategories.map((category) => category.id),
+        bucketId: categoryBucketWizardBucketId,
+        applyToExistingTransactions: categoryBucketWizardBackfill,
+      });
+
+      if (result.error) {
+        toast({
+          variant: "destructive",
+          title: "Erro ao aplicar bucket em lote",
+          description: result.error,
+        });
+        return;
+      }
+
+      toast({
+        title: "Buckets aplicados",
+        description: `${result.updatedCategories ?? bucketWizardSelectedCount} categorias atualizadas${
+          categoryBucketWizardBackfill ? ` | ${result.updatedTransactions ?? 0} lancamentos ajustados` : ""
+        }.`,
+      });
+
+      setCategoryBucketWizardOpen(false);
+      setCategoryBucketWizardStep(1);
+      router.refresh();
+    } finally {
+      setCategoryBucketWizardSaving(false);
+    }
   }
 
   function toggleAssistantCategory(categoryId: string, checked: boolean) {
@@ -391,6 +1007,7 @@ export function CadastrosClient({
           <TabsTrigger value="accounts" className="flex-1">Contas</TabsTrigger>
           <TabsTrigger value="categories" className="flex-1">Categorias</TabsTrigger>
           <TabsTrigger value="budgets" className="flex-1">Orçamentos</TabsTrigger>
+          <TabsTrigger value="income" className="flex-1">Rendas</TabsTrigger>
           <TabsTrigger value="tags" className="flex-1">Tags</TabsTrigger>
           <TabsTrigger value="contacts" className="flex-1">Contatos</TabsTrigger>
         </TabsList>
@@ -452,16 +1069,39 @@ export function CadastrosClient({
                 <FolderOpen className="h-5 w-5" />
                 Categorias
               </CardTitle>
-              <Button size="sm" onClick={() => setCreateCategoryOpen(true)}>
-                Nova categoria
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button type="button" size="sm" variant="outline" onClick={openCategoryBucketWizard}>
+                  <WandSparkles className="mr-2 h-4 w-4" />
+                  Wizard de bucket
+                </Button>
+                <Button size="sm" onClick={() => setCreateCategoryOpen(true)}>
+                  Nova categoria
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
+              <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div className="relative w-full sm:max-w-sm">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    value={categorySearch}
+                    onChange={(event) => setCategorySearch(event.target.value)}
+                    placeholder="Buscar categoria"
+                    className="pl-9"
+                  />
+                </div>
+                <span className="text-xs text-muted-foreground">
+                  {filteredCategories.length} de {categories.length} categorias
+                </span>
+              </div>
+
               {categories.length === 0 ? (
                 <p className="text-muted-foreground">Nenhuma categoria.</p>
+              ) : filteredCategories.length === 0 ? (
+                <p className="text-muted-foreground">Nenhuma categoria encontrada para essa busca.</p>
               ) : (
                 <ul className="space-y-2">
-                  {categories.map((category) => {
+                  {filteredCategories.map((category) => {
                     return (
                       <li
                         key={category.id}
@@ -521,6 +1161,152 @@ export function CadastrosClient({
                 <span className="font-medium">Novo Orçamento</span>
               </Card>
             </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="income" className="mt-4">
+          <div className="space-y-4">
+            <Card>
+              <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <CardTitle className="flex items-center gap-2">
+                  <CircleDollarSign className="h-5 w-5" />
+                  Fontes de renda
+                </CardTitle>
+                <Button
+                  size="sm"
+                  onClick={() => openIncomeSourceDialog()}
+                  disabled={accounts.length === 0}
+                >
+                  Nova fonte
+                </Button>
+              </CardHeader>
+              <CardContent>
+                {accounts.length === 0 ? (
+                  <p className="text-muted-foreground">Crie uma conta antes de cadastrar fontes de renda.</p>
+                ) : incomeSources.length === 0 ? (
+                  <p className="text-muted-foreground">Nenhuma fonte de renda cadastrada.</p>
+                ) : (
+                  <ul className="space-y-2">
+                    {incomeSources.map((source) => (
+                      <li key={source.id} className="flex items-center justify-between rounded border p-3">
+                        <div className="flex flex-col gap-1">
+                          <span className="font-medium">{source.name}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {formatCurrency(Number(source.planned_amount ?? 0))} | Dia {source.day_of_month} | Conta: {accountNameById[source.account_id] ?? "Nao encontrada"}
+                          </span>
+                          {source.notes ? (
+                            <span className="text-xs text-muted-foreground">{source.notes}</span>
+                          ) : null}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {source.is_active ? (
+                            <Badge className="bg-emerald-600 text-white hover:bg-emerald-600">Ativa</Badge>
+                          ) : (
+                            <Badge variant="outline">Pausada</Badge>
+                          )}
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleToggleIncomeSource(source)}
+                            disabled={Boolean(incomeToggleBusyById[source.id])}
+                          >
+                            {incomeToggleBusyById[source.id] ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : source.is_active ? (
+                              "Pausar"
+                            ) : (
+                              "Ativar"
+                            )}
+                          </Button>
+                          <Button type="button" variant="ghost" size="icon" onClick={() => openIncomeSourceDialog(source)}>
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <CardTitle className="flex items-center gap-2">
+                  <CircleDollarSign className="h-5 w-5" />
+                  Pre-lancamentos ({incomeMonthLabel})
+                </CardTitle>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <Input
+                    type="month"
+                    value={incomeMonthInput}
+                    onChange={(event) => handleMonthInputChange(event.target.value)}
+                    className="w-full sm:w-40"
+                  />
+                  <Button type="button" variant="outline" onClick={handleGenerateIncomeRuns} disabled={incomeRunsGenerating}>
+                    {incomeRunsGenerating ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Gerando...
+                      </>
+                    ) : (
+                      "Gerar pre-lancamentos"
+                    )}
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {incomeRuns.length === 0 ? (
+                  <p className="text-muted-foreground">
+                    Nenhum pre-lancamento para este mes. Clique em Gerar pre-lancamentos.
+                  </p>
+                ) : (
+                  <>
+                    <div className="mb-3 text-xs text-muted-foreground">
+                      Pendentes: {pendingIncomeRuns.length} de {incomeRuns.length}
+                    </div>
+                    <ul className="space-y-2">
+                      {incomeRuns.map((run) => {
+                        const source = incomeSourceById[run.source_id];
+                        const sourceName = run.source_name ?? source?.name ?? "Fonte removida";
+                        const receivedAmount = run.actual_amount !== null && run.actual_amount !== undefined
+                          ? Number(run.actual_amount)
+                          : null;
+
+                        return (
+                          <li key={run.id} className="flex items-center justify-between rounded border p-3">
+                            <div className="flex flex-col gap-1">
+                              <span className="font-medium">{sourceName}</span>
+                              <span className="text-xs text-muted-foreground">
+                                Previsto em {run.expected_date} | Planejado {formatCurrency(Number(run.planned_amount ?? 0))}
+                              </span>
+                              {receivedAmount !== null ? (
+                                <span className="text-xs text-muted-foreground">
+                                  Recebido: {formatCurrency(receivedAmount)}
+                                </span>
+                              ) : null}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {renderIncomeRunStatus(run.status)}
+                              {run.status !== "received" ? (
+                                <Button type="button" size="sm" variant="outline" onClick={() => openIncomeRunEditDialog(run)}>
+                                  Editar
+                                </Button>
+                              ) : null}
+                              {run.status === "pending" ? (
+                                <Button type="button" size="sm" onClick={() => openIncomeRunDialog(run)}>
+                                  Marcar recebido
+                                </Button>
+                              ) : null}
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </>
+                )}
+              </CardContent>
+            </Card>
           </div>
         </TabsContent>
 
@@ -618,6 +1404,430 @@ export function CadastrosClient({
         contact={editingContact}
         onSuccess={() => window.location.reload()}
       />
+
+      <Dialog open={incomeSourceDialogOpen} onOpenChange={closeIncomeSourceDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{editingIncomeSourceId ? "Editar fonte de renda" : "Nova fonte de renda"}</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Nome</Label>
+              <Input
+                value={incomeSourceName}
+                onChange={(event) => setIncomeSourceName(event.target.value)}
+                placeholder="Ex.: Salario CLT"
+              />
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Valor planejado (R$)</Label>
+                <Input
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="0,00"
+                  value={incomeSourcePlannedAmount}
+                  onChange={(event) => setIncomeSourcePlannedAmount(event.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Dia previsto</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  max={31}
+                  step="1"
+                  value={incomeSourceDayOfMonth}
+                  onChange={(event) => setIncomeSourceDayOfMonth(event.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Conta de recebimento</Label>
+              <Select value={incomeSourceAccountId} onValueChange={setIncomeSourceAccountId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione uma conta" />
+                </SelectTrigger>
+                <SelectContent>
+                  {accounts.map((account) => (
+                    <SelectItem key={account.id} value={account.id}>
+                      {account.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Categoria de receita (opcional)</Label>
+              <Select value={incomeSourceCategoryId} onValueChange={setIncomeSourceCategoryId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Sem categoria" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Sem categoria</SelectItem>
+                  {incomeCategoryOptions.map((category) => (
+                    <SelectItem key={category.id} value={category.id}>
+                      {category.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Observacoes (opcional)</Label>
+              <Input
+                value={incomeSourceNotes}
+                onChange={(event) => setIncomeSourceNotes(event.target.value)}
+                placeholder="Ex.: bonus trimestral pode variar"
+              />
+            </div>
+
+            <label className="flex items-center gap-2 text-sm">
+              <Checkbox
+                checked={incomeSourceIsActive}
+                onCheckedChange={(checked) => setIncomeSourceIsActive(Boolean(checked))}
+              />
+              Fonte ativa
+            </label>
+          </div>
+
+          <DialogFooter className="flex items-center justify-between gap-2 sm:justify-between">
+            <Button type="button" variant="outline" onClick={() => setIncomeSourceDialogOpen(false)}>
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              onClick={handleSaveIncomeSource}
+              disabled={incomeSourceSaving || accounts.length === 0}
+            >
+              {incomeSourceSaving ? "Salvando..." : "Salvar fonte"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={incomeRunDialogOpen}
+        onOpenChange={(open) => {
+          setIncomeRunDialogOpen(open);
+          if (!open) setSelectedIncomeRun(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirmar recebimento</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="rounded border border-muted bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
+              Fonte: <span className="font-medium text-foreground">{selectedIncomeRun?.source_name ?? incomeSourceById[selectedIncomeRun?.source_id ?? ""]?.name ?? "-"}</span>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Valor recebido (R$)</Label>
+              <Input
+                type="text"
+                inputMode="decimal"
+                placeholder="0,00"
+                value={incomeRunReceivedAmount}
+                onChange={(event) => setIncomeRunReceivedAmount(event.target.value)}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Data de recebimento</Label>
+              <Input
+                type="date"
+                value={incomeRunReceivedDate}
+                onChange={(event) => setIncomeRunReceivedDate(event.target.value)}
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="flex items-center justify-between gap-2 sm:justify-between">
+            <Button type="button" variant="outline" onClick={() => setIncomeRunDialogOpen(false)}>
+              Cancelar
+            </Button>
+            <Button type="button" onClick={handleMarkIncomeRunAsReceived} disabled={incomeRunSaving || !selectedIncomeRun}>
+              {incomeRunSaving ? "Confirmando..." : "Marcar recebido"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={incomeRunEditDialogOpen}
+        onOpenChange={(open) => {
+          setIncomeRunEditDialogOpen(open);
+          if (!open) setEditingIncomeRun(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Editar pre-lancamento</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="rounded border border-muted bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
+              Fonte: <span className="font-medium text-foreground">{editingIncomeRun?.source_name ?? incomeSourceById[editingIncomeRun?.source_id ?? ""]?.name ?? "-"}</span>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Valor planejado (R$)</Label>
+              <Input
+                type="text"
+                inputMode="decimal"
+                placeholder="0,00"
+                value={incomeRunEditPlannedAmount}
+                onChange={(event) => setIncomeRunEditPlannedAmount(event.target.value)}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Data prevista</Label>
+              <Input
+                type="date"
+                value={incomeRunEditExpectedDate}
+                onChange={(event) => setIncomeRunEditExpectedDate(event.target.value)}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Status</Label>
+              <Select
+                value={incomeRunEditStatus}
+                onValueChange={(value) => {
+                  if (value === "pending" || value === "skipped" || value === "cancelled") {
+                    setIncomeRunEditStatus(value);
+                  }
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="pending">Pendente</SelectItem>
+                  <SelectItem value="skipped">Ignorado</SelectItem>
+                  <SelectItem value="cancelled">Cancelado</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <DialogFooter className="flex items-center justify-between gap-2 sm:justify-between">
+            <Button type="button" variant="outline" onClick={() => setIncomeRunEditDialogOpen(false)}>
+              Cancelar
+            </Button>
+            <Button type="button" onClick={handleSaveIncomeRunEdit} disabled={incomeRunEditSaving || !editingIncomeRun}>
+              {incomeRunEditSaving ? "Salvando..." : "Salvar alteracoes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={categoryBucketWizardOpen}
+        onOpenChange={(open) => {
+          setCategoryBucketWizardOpen(open);
+          if (!open) {
+            setCategoryBucketWizardStep(1);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Wizard de bucket em lote</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center gap-2">
+              {CATEGORY_BUCKET_WIZARD_STEPS.map((step) => {
+                const active = step.id === categoryBucketWizardStep;
+                const done = step.id < categoryBucketWizardStep;
+                return (
+                  <div
+                    key={step.id}
+                    className={`rounded-full border px-3 py-1 text-xs ${
+                      active
+                        ? "border-primary bg-primary/10 text-primary"
+                        : done
+                          ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                          : "border-muted text-muted-foreground"
+                    }`}
+                  >
+                    {step.id}. {step.label}
+                  </div>
+                );
+              })}
+            </div>
+
+            {categoryBucketWizardStep === 1 ? (
+              <>
+                <div className="flex flex-col gap-2 rounded border border-muted p-3 sm:flex-row sm:items-center sm:justify-between">
+                  <label className="flex items-center gap-2 text-sm">
+                    <Checkbox
+                      checked={categoryBucketWizardOnlyWithoutBucket}
+                      onCheckedChange={(checked) => setCategoryBucketWizardOnlyWithoutBucket(Boolean(checked))}
+                    />
+                    Mostrar somente categorias sem bucket
+                  </label>
+
+                  <div className="flex items-center gap-2">
+                    <Button type="button" variant="outline" size="sm" onClick={() => setAllBucketWizardSelection(true)}>
+                      Marcar todas
+                    </Button>
+                    <Button type="button" variant="outline" size="sm" onClick={() => setAllBucketWizardSelection(false)}>
+                      Limpar
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    value={categoryBucketWizardSearch}
+                    onChange={(event) => setCategoryBucketWizardSearch(event.target.value)}
+                    placeholder="Buscar categorias no wizard"
+                    className="pl-9"
+                  />
+                </div>
+
+                <div className="max-h-72 overflow-y-auto rounded border">
+                  {bucketWizardCategories.length === 0 ? (
+                    <div className="p-4 text-sm text-muted-foreground">
+                      Nenhuma categoria elegivel para este filtro.
+                    </div>
+                  ) : (
+                    <div className="divide-y">
+                      {bucketWizardCategories.map((category) => (
+                        <label key={category.id} className="grid grid-cols-[auto_1fr_auto] items-center gap-3 p-3 text-sm">
+                          <Checkbox
+                            checked={Boolean(categoryBucketWizardSelected[category.id])}
+                            onCheckedChange={(checked) => toggleBucketWizardCategory(category.id, Boolean(checked))}
+                          />
+                          <div className="flex flex-col">
+                            <span className="font-medium">{category.name}</span>
+                            <span className="text-xs text-muted-foreground">
+                              {category.type === "income" ? "Receita" : "Despesa"}
+                            </span>
+                          </div>
+                          <span className="text-xs text-muted-foreground">
+                            Atual: {category.default_bucket_name ?? "-"}
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="rounded border border-muted bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+                  Selecionadas: {bucketWizardSelectedCount}
+                  {bucketWizardCategories.length > 0 ? ` de ${bucketWizardCategories.length}` : ""}
+                  {allBucketWizardSelected ? " (todas)" : ""}
+                </div>
+              </>
+            ) : null}
+
+            {categoryBucketWizardStep === 2 ? (
+              <div className="space-y-3">
+                <div className="space-y-2">
+                  <Label>Bucket para aplicar</Label>
+                  <Select
+                    value={categoryBucketWizardBucketId}
+                    onValueChange={(value) => setCategoryBucketWizardBucketId(value)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione um bucket" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {buckets.map((bucket) => (
+                        <SelectItem key={bucket.id} value={bucket.id}>
+                          {bucket.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <label className="flex items-center gap-2 text-sm">
+                  <Checkbox
+                    checked={categoryBucketWizardBackfill}
+                    onCheckedChange={(checked) => setCategoryBucketWizardBackfill(Boolean(checked))}
+                  />
+                  Aplicar tambem em lancamentos existentes sem bucket
+                </label>
+
+                <div className="rounded border border-muted bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+                  Categorias selecionadas: {bucketWizardSelectedCount}
+                </div>
+              </div>
+            ) : null}
+
+            {categoryBucketWizardStep === 3 ? (
+              <>
+                <div className="max-h-72 overflow-y-auto rounded border">
+                  {bucketWizardSelectedCategories.length === 0 ? (
+                    <div className="p-4 text-sm text-muted-foreground">
+                      Nenhuma categoria selecionada.
+                    </div>
+                  ) : (
+                    <div className="divide-y">
+                      {bucketWizardSelectedCategories.map((category) => (
+                        <div key={category.id} className="grid grid-cols-[1fr_auto_auto] items-center gap-3 p-3 text-sm">
+                          <div className="flex flex-col">
+                            <span className="font-medium">{category.name}</span>
+                            <span className="text-xs text-muted-foreground">
+                              Atual: {category.default_bucket_name ?? "-"}
+                            </span>
+                          </div>
+                          <span className="text-xs text-muted-foreground">Novo: {selectedWizardBucket?.name ?? "-"}</span>
+                          <span className="text-xs text-emerald-700">Pronto</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="rounded border border-muted bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+                  Aplicar em: {bucketWizardSelectedCount} categorias | Bucket: {selectedWizardBucket?.name ?? "-"}
+                  {categoryBucketWizardBackfill ? " | Backfill de lancamentos ativo" : ""}
+                </div>
+              </>
+            ) : null}
+          </div>
+
+          <DialogFooter className="flex items-center justify-between gap-2 sm:justify-between">
+            <Button type="button" variant="outline" onClick={() => setCategoryBucketWizardOpen(false)}>
+              Cancelar
+            </Button>
+            <div className="flex items-center gap-2">
+              {categoryBucketWizardStep > 1 ? (
+                <Button type="button" variant="outline" onClick={handleCategoryBucketWizardPrevStep}>
+                  Voltar
+                </Button>
+              ) : null}
+              {categoryBucketWizardStep < 3 ? (
+                <Button type="button" onClick={handleCategoryBucketWizardNextStep}>
+                  Proximo
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  onClick={handleApplyCategoryBucketWizard}
+                  disabled={categoryBucketWizardSaving || !categoryBucketWizardBucketId || bucketWizardSelectedCount === 0}
+                >
+                  {categoryBucketWizardSaving ? "Aplicando..." : "Aplicar wizard"}
+                </Button>
+              )}
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={budgetAssistantOpen}

@@ -4,19 +4,33 @@ import * as React from "react";
 import { Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useFinancialData } from "@/hooks/use-financial-data";
-import { CreateTagDialog } from "./create-tag-dialog";
+import { CreateTagDialog, type CreatedTag } from "./create-tag-dialog";
 
 export function TagSelector({
   value = [],
+  orgId,
   onChange,
 }: {
   value?: string[];
+  orgId?: string | null;
   onChange: (value: string[]) => void;
 }) {
   const [createOpen, setCreateOpen] = React.useState(false);
+  const [optimisticTags, setOptimisticTags] = React.useState<CreatedTag[]>([]);
   const { tags } = useFinancialData();
 
-  const selectedTags = tags.filter((tag) => value.includes(tag.id));
+  const mergedTags = React.useMemo(() => {
+    const existingIds = new Set(tags.map((tag) => tag.id));
+    const next = [...tags];
+    for (const optimisticTag of optimisticTags) {
+      if (!existingIds.has(optimisticTag.id)) {
+        next.push(optimisticTag);
+      }
+    }
+    return next;
+  }, [optimisticTags, tags]);
+
+  const selectedTags = mergedTags.filter((tag) => value.includes(tag.id));
 
   const handleToggle = (tagId: string) => {
     if (value.includes(tagId)) {
@@ -29,11 +43,11 @@ export function TagSelector({
   return (
     <div className="flex flex-col gap-2">
       <div className="max-h-40 overflow-auto rounded-md border bg-muted/30 p-2">
-        {tags.length === 0 ? (
+        {mergedTags.length === 0 ? (
           <p className="text-sm text-muted-foreground">Nenhuma tag cadastrada.</p>
         ) : (
           <div className="space-y-1">
-            {tags.map((tag) => (
+            {mergedTags.map((tag) => (
               <label
                 key={tag.id}
                 className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-sm hover:bg-muted"
@@ -80,9 +94,14 @@ export function TagSelector({
       <CreateTagDialog
         open={createOpen}
         onOpenChange={setCreateOpen}
-        onSuccess={(id) => onChange([...value, id])}
+        orgId={orgId}
+        onSuccess={(tag) => {
+          setOptimisticTags((current) => (current.some((item) => item.id === tag.id) ? current : [...current, tag]));
+          if (!value.includes(tag.id)) {
+            onChange([...value, tag.id]);
+          }
+        }}
       />
     </div>
   );
 }
-

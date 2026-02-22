@@ -33,6 +33,7 @@ type DrilldownTransactionRow = {
   id: string;
   date: string;
   type: "income" | "expense" | "transfer";
+  status: "pending" | "cleared" | "reconciled" | "cancelled" | string;
   amount: number | string;
   description: string | null;
   installment_id: string | null;
@@ -43,6 +44,7 @@ type DrilldownTransactionRow = {
 
 type AmountRow = {
   type: "income" | "expense" | "transfer";
+  status: "pending" | "cleared" | "reconciled" | "cancelled" | string;
   date: string;
   amount: number | string;
   installment_id: string | null;
@@ -52,6 +54,7 @@ type AmountRow = {
 
 type TrendRow = {
   type: "income" | "expense" | "transfer";
+  status: "pending" | "cleared" | "reconciled" | "cancelled" | string;
   date: string;
   amount: number | string;
   installment_id: string | null;
@@ -96,7 +99,7 @@ export async function getCategoryDrilldown(
 
   let transactionQuery = supabase
     .from("transactions")
-    .select("id, date, amount, type, description, installment_id, created_at, metadata, bucket_id, distribution_buckets(name)")
+    .select("id, date, amount, type, status, description, installment_id, created_at, metadata, bucket_id, distribution_buckets(name)")
     .eq("org_id", orgId)
     .eq("type", "expense")
     .is("deleted_at", null)
@@ -125,7 +128,7 @@ export async function getCategoryDrilldown(
 
   const { data: totalRows } = await supabase
     .from("transactions")
-    .select("amount, type, date, installment_id, created_at, metadata")
+    .select("amount, type, status, date, installment_id, created_at, metadata")
     .eq("org_id", orgId)
     .eq("type", "expense")
     .is("deleted_at", null)
@@ -145,7 +148,7 @@ export async function getCategoryDrilldown(
 
   let previousQuery = supabase
     .from("transactions")
-    .select("amount, type, date, installment_id, created_at, metadata")
+    .select("amount, type, status, date, installment_id, created_at, metadata")
     .eq("org_id", orgId)
     .eq("type", "expense")
     .is("deleted_at", null)
@@ -170,7 +173,7 @@ export async function getCategoryDrilldown(
 
   let trendQuery = supabase
     .from("transactions")
-    .select("date, amount, type, installment_id, created_at, metadata")
+    .select("date, amount, type, status, installment_id, created_at, metadata")
     .eq("org_id", orgId)
     .eq("type", "expense")
     .is("deleted_at", null)

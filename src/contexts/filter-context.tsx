@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { startOfMonth, endOfMonth, subDays, startOfYear, endOfYear, subMonths } from "date-fns";
+import { toISODateLocal } from "@/lib/utils";
 
 export type DateRange = {
     from: Date | undefined;
@@ -35,6 +36,18 @@ export function FilterProvider({ children }: { children: React.ReactNode }) {
         return new URLSearchParams(window.location.search);
     }
 
+    function parseDateParam(value: string | null): Date | undefined {
+        if (!value) return undefined;
+
+        if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+            const parsedLocal = new Date(`${value}T12:00:00`);
+            return Number.isNaN(parsedLocal.getTime()) ? undefined : parsedLocal;
+        }
+
+        const parsed = new Date(value);
+        return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+    }
+
     // Sync from URL on mount/update; fallback to current month for hydration safety
     useEffect(() => {
         const searchParams = readCurrentParams();
@@ -42,10 +55,13 @@ export function FilterProvider({ children }: { children: React.ReactNode }) {
         const endParam = searchParams.get("end");
         const presetParam = searchParams.get("period") as PeriodPreset;
 
-        if (startParam && endParam) {
+        const parsedStart = parseDateParam(startParam);
+        const parsedEnd = parseDateParam(endParam);
+
+        if (parsedStart && parsedEnd) {
             setDateRangeState({
-                from: new Date(startParam),
-                to: new Date(endParam),
+                from: parsedStart,
+                to: parsedEnd,
             });
         } else {
             const now = new Date();
@@ -60,8 +76,8 @@ export function FilterProvider({ children }: { children: React.ReactNode }) {
     const updateUrl = (range: DateRange, newPreset: PeriodPreset) => {
         const params = readCurrentParams();
 
-        if (range.from) params.set("start", range.from.toISOString().split("T")[0]);
-        if (range.to) params.set("end", range.to.toISOString().split("T")[0]);
+        if (range.from) params.set("start", toISODateLocal(range.from));
+        if (range.to) params.set("end", toISODateLocal(range.to));
         params.set("period", newPreset);
 
         router.push(`${pathname}?${params.toString()}`, { scroll: false });

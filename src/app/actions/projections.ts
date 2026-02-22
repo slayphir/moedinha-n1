@@ -47,7 +47,7 @@ export async function getFinancialProjection(days: number = 90) {
     // For V1, we fetch all non-deleted.
     const { data: allTransactions, error: txError } = await supabase
         .from("transactions")
-        .select("id, date, amount, type, description, installment_id, created_at, metadata")
+        .select("id, date, amount, type, status, description, installment_id, created_at, metadata")
         .eq("org_id", orgId)
         .is("deleted_at", null)
         .order("date", { ascending: true });

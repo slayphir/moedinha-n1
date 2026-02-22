@@ -2,8 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { addMonths, parseISO } from "date-fns";
-import { formatCurrency } from "@/lib/utils";
-import { Controller, useForm } from "react-hook-form";
+import { formatCurrency, toISODateLocal } from "@/lib/utils";
+import { Controller, useForm, type FieldErrors } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { ChevronDown, ChevronUp, Sparkles, Calculator } from "lucide-react";
 import { transactionSchema, type TransactionFormValues } from "@/lib/validators/transaction";
@@ -19,6 +19,7 @@ import { CreateAccountDialog } from "./create-account-dialog";
 import { CreateCategoryDialog } from "./create-category-dialog";
 import { TagSelector } from "./tag-selector";
 import { ContactSelector } from "./contact-selector";
+import { useToast } from "@/components/ui/use-toast";
 import type { QuickTransactionDraft } from "@/lib/quick-launch";
 import { trackQuickValidationError } from "@/lib/quick-log-metrics";
 
@@ -64,6 +65,24 @@ export interface QuickSaveResult {
 const LAST_ACCOUNT_KEY = "moedinha_n1_last_account_id";
 const ACCOUNT_CATEGORY_MEMORY_KEY = "moedinha_n1_account_category_memory";
 const DESCRIPTION_CATEGORY_MEMORY_KEY = "moedinha_n1_description_category_memory";
+const INSTALLMENT_MIN = 2;
+const INSTALLMENT_MAX = 120;
+const INSTALLMENT_QUICK_OPTIONS = [2, 3, 6, 12, 18] as const;
+const INVALID_FIELD_PRIORITY: Array<keyof TransactionFormValues> = [
+  "amount",
+  "accountId",
+  "date",
+  "transferAccountId",
+  "installments",
+  "frequency",
+];
+const INVALID_FIELD_LABELS: Partial<Record<keyof TransactionFormValues, string>> = {
+  amount: "Valor",
+  accountId: "Conta/Cartao",
+  transferAccountId: "Conta destino",
+  installments: "Numero de parcelas",
+  frequency: "Frequencia",
+};
 
 const QUICK_TEMPLATES: Array<{ label: string; amount: number; description: string; type: TxType }> = [
   { label: "Cafe 12", amount: 12, description: "Cafe", type: "expense" },
@@ -86,7 +105,7 @@ const defaultValues: TransactionFormValues = {
   type: "expense",
   accountId: "",
   categoryId: null,
-  date: new Date().toISOString().slice(0, 10),
+  date: toISODateLocal(new Date()),
   dueDate: null,
   isPaid: true,
   isInstallment: false,
@@ -144,6 +163,7 @@ function buildInstallmentPreview(args: {
   installmentInputType: "total" | "installment";
   date: string;
   dueDate: string | null;
+  alignDateToDueDate?: boolean;
 }): InstallmentPreview[] {
   const {
     amount,
@@ -151,6 +171,7 @@ function buildInstallmentPreview(args: {
     installmentInputType,
     date,
     dueDate,
+    alignDateToDueDate = false,
   } = args;
   const normalizedAmount = toFiniteNumber(amount);
 
@@ -167,23 +188,39 @@ function buildInstallmentPreview(args: {
   const hasDueDateBase = Boolean(dueDateBase && !Number.isNaN(dueDateBase.getTime()));
 
   return parts.map((value, index) => {
-    const thisDate = addMonths(startDate, index).toISOString().slice(0, 10);
+    const thisDate = toISODateLocal(addMonths(startDate, index));
     const thisDueDate =
       hasDueDateBase && dueDateBase
-        ? addMonths(dueDateBase, index).toISOString().slice(0, 10)
+        ? toISODateLocal(addMonths(dueDateBase, index))
         : null;
+    const resolvedDate = alignDateToDueDate && thisDueDate ? thisDueDate : thisDate;
     const effectiveDate = thisDueDate ?? thisDate;
     const defaultPaid = false;
 
     return {
       index,
       amount: value,
-      date: thisDate,
+      date: resolvedDate,
       dueDate: thisDueDate,
       effectiveDate,
       defaultPaid,
     };
   });
+}
+
+function parseInstallmentsInput(value: string): number | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const parsed = Number.parseInt(trimmed, 10);
+  if (!Number.isFinite(parsed)) return null;
+  return parsed;
+}
+
+function pickFirstInvalidField(formErrors: FieldErrors<TransactionFormValues>): keyof TransactionFormValues | null {
+  const prioritizedField = INVALID_FIELD_PRIORITY.find((field) => Boolean(formErrors[field]));
+  if (prioritizedField) return prioritizedField;
+  const fallbackField = Object.keys(formErrors)[0];
+  return fallbackField ? (fallbackField as keyof TransactionFormValues) : null;
 }
 
 function clampDay(year: number, monthIndex: number, day: number) {
@@ -192,7 +229,7 @@ function clampDay(year: number, monthIndex: number, day: number) {
 }
 
 function toIsoDate(year: number, monthIndex: number, day: number) {
-  return new Date(year, monthIndex, clampDay(year, monthIndex, day)).toISOString().slice(0, 10);
+  return toISODateLocal(new Date(year, monthIndex, clampDay(year, monthIndex, day)));
 }
 
 function formatIsoDateBR(isoDate: string | null | undefined) {
@@ -350,6 +387,7 @@ export function TransactionForm({
   onSuccess?: (result: QuickSaveResult) => void;
   initialDraft?: QuickTransactionDraft | null;
 }) {
+  const { toast } = useToast();
   const { accounts, categories, refetch } = useFinancialData();
   const [loading, setLoading] = useState(false);
   const [newAccountOpen, setNewAccountOpen] = useState(false);
@@ -440,6 +478,7 @@ export function TransactionForm({
       installmentInputType: installmentInputType ?? "total",
       date: txDate,
       dueDate: resolvedPreviewDueDate,
+      alignDateToDueDate: selectedAccountIsCreditCard,
     });
   }, [
     type,
@@ -449,6 +488,7 @@ export function TransactionForm({
     installmentInputType,
     txDate,
     resolvedPreviewDueDate,
+    selectedAccountIsCreditCard,
   ]);
   const paidInstallmentsCount = useMemo(
     () =>
@@ -583,8 +623,44 @@ export function TransactionForm({
     installmentInputType,
   ]);
 
-  const onInvalid = () => {
+  const onInvalid = (formErrors: FieldErrors<TransactionFormValues>) => {
     trackQuickValidationError();
+    const firstInvalidField = pickFirstInvalidField(formErrors);
+    if (!firstInvalidField) return;
+
+    if (firstInvalidField === "frequency") {
+      setShowDetails(true);
+    }
+
+    const fieldLabel =
+      firstInvalidField === "date"
+        ? type === "expense"
+          ? "Data da compra"
+          : "Data do lancamento"
+        : INVALID_FIELD_LABELS[firstInvalidField] ?? "Campo obrigatorio";
+
+    const fieldError = formErrors[firstInvalidField];
+    const detail = typeof fieldError?.message === "string" ? fieldError.message : null;
+    toast({
+      variant: "destructive",
+      title: "Campo obrigatorio pendente",
+      description: detail ? `${fieldLabel}: ${detail}` : `Preencha: ${fieldLabel}`,
+    });
+
+    setTimeout(() => {
+      if (firstInvalidField === "amount") {
+        amountInputRef.current?.focus();
+        amountInputRef.current?.select();
+        return;
+      }
+      if (firstInvalidField === "installments") {
+        document.getElementById("installments-manual")?.focus();
+        return;
+      }
+      if (firstInvalidField === "date") {
+        document.querySelector<HTMLInputElement>("input[type='date']")?.focus();
+      }
+    }, 0);
   };
 
   async function onSubmit(data: TransactionFormValues) {
@@ -627,7 +703,7 @@ export function TransactionForm({
 
       let rows: TransactionInsert[] = [];
       const nowLocal = new Date();
-      const currentMonthStartIso = new Date(nowLocal.getFullYear(), nowLocal.getMonth(), 1).toISOString().slice(0, 10);
+      const currentMonthStartIso = toISODateLocal(new Date(nowLocal.getFullYear(), nowLocal.getMonth(), 1));
 
       if (data.type === "expense" && data.isInstallment && data.installments && data.installments > 1) {
         const installmentId = createUuidV4();
@@ -637,6 +713,7 @@ export function TransactionForm({
           installmentInputType: data.installmentInputType ?? "total",
           date: data.date,
           dueDate: resolvedDueDate,
+          alignDateToDueDate: Boolean(account.is_credit_card) || account.type === "credit_card",
         });
 
         rows = plan.map((installment) => {
@@ -764,7 +841,7 @@ export function TransactionForm({
         }
       }
 
-      const now = new Date().toISOString().slice(0, 10);
+      const now = toISODateLocal(new Date());
       const ttlMs = Date.now() - startedAtRef.current;
       const clicks = Math.max(1, clicksRef.current);
 
@@ -826,14 +903,33 @@ export function TransactionForm({
   };
 
   const handleInstallmentQuick = (installments: number) => {
-    if (installments <= 1) {
-      setValue("isInstallment", false);
-      setValue("installments", null);
+    if (installments < INSTALLMENT_MIN) {
+      setValue("isInstallment", false, { shouldValidate: true });
+      setValue("installments", null, { shouldValidate: true });
       return;
     }
-    setValue("isInstallment", true);
-    setValue("installments", installments);
-    setValue("isPaid", false);
+    const normalizedInstallments = Math.min(Math.trunc(installments), INSTALLMENT_MAX);
+    setValue("isInstallment", true, { shouldValidate: true });
+    setValue("installments", normalizedInstallments, { shouldValidate: true });
+    setValue("isPaid", false, { shouldValidate: true });
+  };
+
+  const handleInstallmentManualChange = (rawValue: string) => {
+    const parsed = parseInstallmentsInput(rawValue);
+    if (parsed == null) {
+      setValue("installments", null, { shouldValidate: true });
+      return;
+    }
+    handleInstallmentQuick(parsed);
+  };
+
+  const handleInstallmentManualBlur = () => {
+    const currentInstallments = getValues("installments");
+    if (!currentInstallments) return;
+    const normalizedInstallments = Math.min(Math.max(Math.trunc(currentInstallments), INSTALLMENT_MIN), INSTALLMENT_MAX);
+    if (normalizedInstallments !== currentInstallments) {
+      setValue("installments", normalizedInstallments, { shouldValidate: true });
+    }
   };
 
   const setSingleExpenseMode = () => {
@@ -1101,20 +1197,36 @@ export function TransactionForm({
               {isInstallment && (
                 <div className="space-y-2">
                   <Label className="text-xs uppercase tracking-wide text-muted-foreground">Parcelas</Label>
-                  <div className="flex flex-wrap gap-2">
-                    <Button type="button" variant={installmentCount === 2 ? "default" : "outline"} size="sm" onClick={() => handleInstallmentQuick(2)}>
-                      2x
-                    </Button>
-                    <Button type="button" variant={installmentCount === 3 ? "default" : "outline"} size="sm" onClick={() => handleInstallmentQuick(3)}>
-                      3x
-                    </Button>
-                    <Button type="button" variant={installmentCount === 6 ? "default" : "outline"} size="sm" onClick={() => handleInstallmentQuick(6)}>
-                      6x
-                    </Button>
-                    <Button type="button" variant={installmentCount === 12 ? "default" : "outline"} size="sm" onClick={() => handleInstallmentQuick(12)}>
-                      12x
-                    </Button>
+                  <div className="flex flex-wrap items-end gap-2">
+                    {INSTALLMENT_QUICK_OPTIONS.map((option) => (
+                      <Button
+                        key={option}
+                        type="button"
+                        variant={installmentCount === option ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => handleInstallmentQuick(option)}
+                      >
+                        {option}x
+                      </Button>
+                    ))}
+                    <div className="w-28 space-y-1">
+                      <Label htmlFor="installments-manual" className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                        Digite
+                      </Label>
+                      <Input
+                        id="installments-manual"
+                        type="number"
+                        min={INSTALLMENT_MIN}
+                        max={INSTALLMENT_MAX}
+                        step={1}
+                        placeholder="Ex: 18"
+                        value={installmentCount && installmentCount > 0 ? installmentCount : ""}
+                        onChange={(event) => handleInstallmentManualChange(event.target.value)}
+                        onBlur={handleInstallmentManualBlur}
+                      />
+                    </div>
                   </div>
+                  <p className="text-xs text-muted-foreground">Use os atalhos ou digite de {INSTALLMENT_MIN} a {INSTALLMENT_MAX} parcelas.</p>
                 </div>
               )}
             </div>
@@ -1168,7 +1280,11 @@ export function TransactionForm({
 
                 <div className="space-y-1">
                   <Label className="text-xs uppercase tracking-wide text-muted-foreground">Tags (opcional)</Label>
-                  <TagSelector value={watch("tags") || []} onChange={(tags) => setValue("tags", tags)} />
+                  <TagSelector
+                    value={watch("tags") || []}
+                    orgId={selectedAccount?.org_id ?? null}
+                    onChange={(tags) => setValue("tags", tags)}
+                  />
                 </div>
               </div>
             )}
@@ -1246,7 +1362,8 @@ export function TransactionForm({
                               Parcela {installment.index + 1}/{installmentCount}
                             </span>
                             <span className="text-xs text-muted-foreground">
-                              Compra: {formatIsoDateBR(installment.date)}
+                              {selectedAccountIsCreditCard ? "Competencia: " : "Compra: "}
+                              {formatIsoDateBR(installment.date)}
                               {installment.dueDate ? ` | Vence: dia ${extractIsoDay(installment.dueDate) ?? "-"}` : ""}
                             </span>
                           </div>
@@ -1333,7 +1450,11 @@ export function TransactionForm({
 
             <div className="space-y-2">
               <Label>Tags (opcional)</Label>
-              <TagSelector value={watch("tags") || []} onChange={(tags) => setValue("tags", tags)} />
+              <TagSelector
+                value={watch("tags") || []}
+                orgId={selectedAccount?.org_id ?? null}
+                onChange={(tags) => setValue("tags", tags)}
+              />
             </div>
 
             {
@@ -1361,6 +1482,7 @@ export function TransactionForm({
                             <SelectItem value="yearly">Anual</SelectItem>
                           </SelectContent>
                         </Select>
+                        {errors.frequency && <p className="text-xs text-destructive">{errors.frequency.message}</p>}
                       </div>
                       <div className="space-y-2">
                         <Label>Fim (opcional)</Label>

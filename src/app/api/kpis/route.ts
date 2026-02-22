@@ -74,7 +74,7 @@ export async function GET(request: NextRequest) {
     .eq("is_active", true);
   let allTxQuery = supabase
     .from("transactions")
-    .select("amount, type, date, installment_id, created_at, metadata")
+    .select("amount, type, status, date, installment_id, created_at, metadata")
     .eq("org_id", orgId)
     .is("deleted_at", null)
     .in("status", ["cleared", "reconciled"])

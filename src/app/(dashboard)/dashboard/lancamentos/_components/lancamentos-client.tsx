@@ -1,12 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import {
   createColumnHelper,
   flexRender,
   getCoreRowModel,
-  getFilteredRowModel,
   useReactTable,
 } from "@tanstack/react-table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -45,19 +44,20 @@ const columns = [
     header: "Vencimento",
     cell: (cell) => (cell.getValue() ? formatDate(String(cell.getValue())) : "-"),
   }),
-  helper.accessor("description", {
+  helper.accessor((row) => row.description ?? "", {
+    id: "description",
     header: "Descricao",
-    cell: (cell) => cell.getValue() ?? "-",
+    cell: (cell) => cell.row.original.description ?? "-",
   }),
-  helper.accessor((row) => row.account?.name, {
+  helper.accessor((row) => row.account?.name ?? "", {
     id: "account",
     header: "Conta",
-    cell: (cell) => cell.getValue() ?? "-",
+    cell: (cell) => cell.row.original.account?.name ?? "-",
   }),
-  helper.accessor((row) => row.category?.name, {
+  helper.accessor((row) => row.category?.name ?? "", {
     id: "category",
     header: "Categoria",
-    cell: (cell) => cell.getValue() ?? "-",
+    cell: (cell) => cell.row.original.category?.name ?? "-",
   }),
   helper.accessor("amount", {
     header: "Valor",
@@ -109,6 +109,15 @@ type Props = {
   currentPage?: number;
   orgId: string;
   focusPendingBucket?: boolean;
+  accountOptions: Array<{
+    id: string;
+    name: string;
+    type: "card" | "account";
+  }>;
+  selectedAccountType: "all" | "card" | "account";
+  selectedAccountId: string;
+  searchTerm: string;
+  selectedMonth: string;
 };
 
 export function LancamentosClient({
@@ -117,28 +126,95 @@ export function LancamentosClient({
   currentPage = 1,
   orgId,
   focusPendingBucket = false,
+  accountOptions,
+  selectedAccountType,
+  selectedAccountId,
+  searchTerm,
+  selectedMonth,
 }: Props) {
-  const [data] = useState(initialTransactions);
-  const [globalFilter, setGlobalFilter] = useState("");
+  const data = initialTransactions;
+  const [searchDraft, setSearchDraft] = useState(searchTerm);
   const [editingTransaction, setEditingTransaction] = useState<LancamentoRow | null>(null);
   const [selectedIds, setSelectedIds] = useState<Record<string, boolean>>({});
   const [deletingSelected, setDeletingSelected] = useState(false);
   const router = useRouter();
+  const pathname = usePathname();
   const { toast } = useToast();
 
-  const handlePageChange = (newPage: number) => {
+  const updateQueryParams = useCallback((mutate: (params: URLSearchParams) => void) => {
     const params = new URLSearchParams(window.location.search);
-    params.set("page", String(newPage));
-    router.push(`?${params.toString()}`);
-  }
+    mutate(params);
+    const query = params.toString();
+    router.push(query ? `${pathname}?${query}` : pathname);
+  }, [pathname, router]);
+
+  useEffect(() => {
+    setSearchDraft(searchTerm);
+  }, [searchTerm]);
+
+  useEffect(() => {
+    const normalizedDraft = searchDraft.trim();
+    if (normalizedDraft === searchTerm) return;
+
+    const timeoutId = window.setTimeout(() => {
+      updateQueryParams((params) => {
+        if (normalizedDraft) {
+          params.set("q", normalizedDraft);
+        } else {
+          params.delete("q");
+        }
+        params.set("page", "1");
+      });
+    }, 300);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [searchDraft, searchTerm, updateQueryParams]);
+
+  const handlePageChange = (newPage: number) => {
+    if (newPage < 1 || newPage > totalPages || newPage === currentPage) return;
+    updateQueryParams((params) => {
+      params.set("page", String(newPage));
+    });
+  };
+
+  const handleAccountTypeChange = (value: "all" | "card" | "account") => {
+    updateQueryParams((params) => {
+      if (value === "all") {
+        params.delete("accountType");
+      } else {
+        params.set("accountType", value);
+      }
+      params.delete("account");
+      params.set("page", "1");
+    });
+  };
+
+  const handleAccountChange = (accountId: string) => {
+    updateQueryParams((params) => {
+      if (accountId) {
+        params.set("account", accountId);
+      } else {
+        params.delete("account");
+      }
+      params.set("page", "1");
+    });
+  };
+
+  const handleMonthChange = (month: string) => {
+    updateQueryParams((params) => {
+      if (month) {
+        params.set("month", month);
+      } else {
+        params.delete("month");
+      }
+      params.set("page", "1");
+    });
+  };
 
   const table = useReactTable({
     data,
     columns,
-    state: { globalFilter },
-    onGlobalFilterChange: setGlobalFilter,
     getCoreRowModel: getCoreRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
     // Manual pagination is handled by parent, so we don't need getPaginationRowModel
     manualPagination: true,
     pageCount: totalPages,
@@ -155,6 +231,10 @@ export function LancamentosClient({
   );
   const allVisibleSelected = visibleIds.length > 0 && selectedVisibleCount === visibleIds.length;
   const anySelected = Object.values(selectedIds).some(Boolean);
+  const visibleAccountOptions =
+    selectedAccountType === "all"
+      ? accountOptions
+      : accountOptions.filter((account) => account.type === selectedAccountType);
 
   const toggleRowSelection = (id: string, checked: boolean) => {
     setSelectedIds((current) => {
@@ -229,12 +309,51 @@ export function LancamentosClient({
         <CardHeader className="flex flex-col gap-3 pb-2 sm:flex-row sm:items-center sm:justify-between">
           <CardTitle className="text-base">Lista</CardTitle>
           <div className="flex flex-wrap gap-2">
+            <select
+              value={selectedAccountType}
+              onChange={(event) => handleAccountTypeChange(event.target.value as "all" | "card" | "account")}
+              className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+              aria-label="Filtrar por tipo de conta"
+            >
+              <option value="all">Todas (contas + cartoes)</option>
+              <option value="account">Somente contas</option>
+              <option value="card">Somente cartoes</option>
+            </select>
+            <select
+              value={selectedAccountId}
+              onChange={(event) => handleAccountChange(event.target.value)}
+              className="h-10 min-w-[220px] rounded-md border border-input bg-background px-3 text-sm"
+              aria-label="Filtrar por conta especifica"
+            >
+              <option value="">Todas as contas</option>
+              {visibleAccountOptions.map((account) => (
+                <option key={account.id} value={account.id}>
+                  {account.name}
+                </option>
+              ))}
+            </select>
             <Input
               placeholder="Buscar..."
-              value={globalFilter ?? ""}
-              onChange={(event) => setGlobalFilter(event.target.value)}
+              value={searchDraft}
+              onChange={(event) => setSearchDraft(event.target.value)}
               className="w-[220px]"
             />
+            <input
+              type="month"
+              value={selectedMonth}
+              onChange={(event) => handleMonthChange(event.target.value)}
+              className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+              aria-label="Filtrar por mes e ano"
+            />
+            {selectedMonth && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleMonthChange("")}
+              >
+                Limpar mes
+              </Button>
+            )}
             <CSVExporter />
             <CSVImporter onSuccess={() => router.refresh()} />
             <Button

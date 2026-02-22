@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { getActiveOrgIdForUser } from "@/lib/active-org";
 import { isRetroactiveInstallmentBackfill } from "@/lib/transactions/retroactive";
+import { toISODateLocal } from "@/lib/utils";
 
 export type CategorySpend = {
   category_id: string | null;
@@ -45,6 +46,7 @@ type TransactionRow = {
   amount: number | string;
   date: string;
   type: "income" | "expense" | "transfer";
+  status: "pending" | "cleared" | "reconciled" | "cancelled" | string;
   category_id: string | null;
   bucket_id: string | null;
   due_date: string | null;
@@ -58,6 +60,7 @@ type TransactionRow = {
 type PrevTransactionRow = {
   amount: number | string;
   type: "income" | "expense" | "transfer";
+  status: "pending" | "cleared" | "reconciled" | "cancelled" | string;
   date: string;
   installment_id: string | null;
   created_at: string | null;
@@ -103,7 +106,7 @@ export async function getReportMetrics(startDate: string, endDate: string): Prom
   const { data: txRows } = await supabase
     .from("transactions")
     .select(
-      "id, amount, date, type, category_id, bucket_id, due_date, installment_id, created_at, metadata, categories(name), distribution_buckets(name)"
+      "id, amount, date, type, status, category_id, bucket_id, due_date, installment_id, created_at, metadata, categories(name), distribution_buckets(name)"
     )
     .eq("org_id", orgId)
     .is("deleted_at", null)
@@ -115,15 +118,15 @@ export async function getReportMetrics(startDate: string, endDate: string): Prom
     (transaction) => !isRetroactiveInstallmentBackfill(transaction)
   );
 
-  const startMs = new Date(startDate).getTime();
-  const endMs = new Date(endDate).getTime();
+  const startMs = new Date(`${startDate}T12:00:00`).getTime();
+  const endMs = new Date(`${endDate}T12:00:00`).getTime();
   const durationMs = endMs - startMs;
-  const prevStart = new Date(startMs - durationMs).toISOString().slice(0, 10);
-  const prevEnd = new Date(startMs - 86400000).toISOString().slice(0, 10);
+  const prevStart = toISODateLocal(new Date(startMs - durationMs));
+  const prevEnd = toISODateLocal(new Date(startMs - 86400000));
 
   const { data: prevRows } = await supabase
     .from("transactions")
-    .select("amount, category_id, type, date, installment_id, created_at, metadata")
+    .select("amount, category_id, type, status, date, installment_id, created_at, metadata")
     .eq("org_id", orgId)
     .is("deleted_at", null)
     .gte("date", prevStart)
@@ -263,7 +266,7 @@ export async function getReportMetrics(startDate: string, endDate: string): Prom
       const shift = date.getDate() - day + (day === 0 ? -6 : 1);
       const weekStart = new Date(date);
       weekStart.setDate(shift);
-      key = weekStart.toISOString().slice(0, 10);
+      key = toISODateLocal(weekStart);
       label = `Sem ${weekStart.getDate()}/${weekStart.getMonth() + 1}`;
     } else {
       key = transaction.date.slice(0, 7);

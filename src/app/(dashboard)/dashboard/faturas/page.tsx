@@ -1,11 +1,12 @@
 ﻿import { createClient } from "@/lib/supabase/server";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, toISODateLocal, toISOYearMonthLocal } from "@/lib/utils";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { EmptyInvoiceState } from "./_components/empty-invoice-state";
 import { NewCardButton } from "./_components/new-card-button";
+import { PayInvoiceButton } from "./_components/pay-invoice-button";
 import { isRetroactiveInstallmentBackfill } from "@/lib/transactions/retroactive";
 
 export const dynamic = "force-dynamic";
@@ -34,13 +35,23 @@ type TxRow = {
   metadata: Record<string, unknown> | null;
 };
 
+type PendingLimitRow = {
+  amount: number;
+  type: "expense" | "income" | "transfer";
+  status: string;
+  date: string;
+  installment_id: string | null;
+  created_at: string | null;
+  metadata: Record<string, unknown> | null;
+};
+
 function daysInMonth(year: number, monthIndex: number) {
   return new Date(year, monthIndex + 1, 0).getDate();
 }
 
 function toIsoDate(year: number, monthIndex: number, day: number) {
   const safeDay = Math.min(day, daysInMonth(year, monthIndex));
-  return new Date(year, monthIndex, safeDay).toISOString().slice(0, 10);
+  return toISODateLocal(new Date(year, monthIndex, safeDay));
 }
 
 function computeFallbackDueDate(dateStr: string, closingDay?: number | null, dueDay?: number | null) {
@@ -50,16 +61,29 @@ function computeFallbackDueDate(dateStr: string, closingDay?: number | null, due
   if (!dueDay) return dateStr;
 
   let monthOffset = 0;
-  if (closingDay && txDay > closingDay) {
-    monthOffset = 1;
-  } else if (!closingDay && txDay > dueDay) {
+  const hasClosingDay = Boolean(closingDay && closingDay >= 1 && closingDay <= 31);
+  if (hasClosingDay) {
+    if (txDay > Number(closingDay)) {
+      monthOffset += 1;
+    }
+    if (dueDay <= Number(closingDay)) {
+      monthOffset += 1;
+    }
+  } else if (txDay > dueDay) {
     monthOffset = 1;
   }
 
-  const dueYear = txDate.getFullYear();
-  const dueMonth = txDate.getMonth() + monthOffset;
-  const dueDate = new Date(dueYear, dueMonth, 1);
-  return toIsoDate(dueDate.getFullYear(), dueDate.getMonth(), dueDay);
+  let target = new Date(txDate.getFullYear(), txDate.getMonth() + monthOffset, 1);
+  let dueIso = toIsoDate(target.getFullYear(), target.getMonth(), dueDay);
+
+  let safety = 0;
+  while (dueIso < dateStr && safety < 24) {
+    target = new Date(target.getFullYear(), target.getMonth() + 1, 1);
+    dueIso = toIsoDate(target.getFullYear(), target.getMonth(), dueDay);
+    safety += 1;
+  }
+
+  return dueIso;
 }
 
 function isDueDateInvalid(txDate: string, dueDate: string | null): boolean {
@@ -102,7 +126,7 @@ export default async function FaturasPage({
   const cards = (cardRows ?? []) as CardAccount[];
   const selectedCardParam = typeof searchParams.card === "string" ? searchParams.card : "";
   const selectedMonthParam = typeof searchParams.month === "string" ? searchParams.month : "";
-  const currentMonth = new Date().toISOString().slice(0, 7);
+  const currentMonth = toISOYearMonthLocal(new Date());
   const selectedMonth = /^\d{4}-\d{2}$/.test(selectedMonthParam) ? selectedMonthParam : currentMonth;
 
   if (cards.length === 0) {
@@ -112,21 +136,50 @@ export default async function FaturasPage({
   const selectedCard = cards.find((card) => card.id === selectedCardParam) ?? cards[0];
 
   const monthDate = new Date(`${selectedMonth}-01T12:00:00`);
-  const rangeStart = new Date(monthDate.getFullYear(), monthDate.getMonth() - 2, 1).toISOString().slice(0, 10);
-  const rangeEnd = new Date(monthDate.getFullYear(), monthDate.getMonth() + 2, 0).toISOString().slice(0, 10);
+  const monthStart = toISODateLocal(new Date(monthDate.getFullYear(), monthDate.getMonth(), 1));
+  const monthEnd = toISODateLocal(new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0));
+  const rangeStart = toISODateLocal(new Date(monthDate.getFullYear(), monthDate.getMonth() - 2, 1));
+  const rangeEnd = toISODateLocal(new Date(monthDate.getFullYear(), monthDate.getMonth() + 2, 0));
 
-  const { data: txRows } = await supabase
-    .from("transactions")
-    .select("id, date, due_date, description, amount, status, type, installment_id, created_at, metadata")
-    .eq("org_id", orgId)
-    .eq("account_id", selectedCard.id)
-    .eq("type", "expense")
-    .is("deleted_at", null)
-    .gte("date", rangeStart)
-    .lte("date", rangeEnd)
-    .order("date", { ascending: false });
+  const baseSelect = "id, date, due_date, description, amount, status, type, installment_id, created_at, metadata";
+  const [dueMonthResult, dateRangeResult] = await Promise.all([
+    supabase
+      .from("transactions")
+      .select(baseSelect)
+      .eq("org_id", orgId)
+      .eq("account_id", selectedCard.id)
+      .eq("type", "expense")
+      .is("deleted_at", null)
+      .gte("due_date", monthStart)
+      .lte("due_date", monthEnd)
+      .order("date", { ascending: false }),
+    supabase
+      .from("transactions")
+      .select(baseSelect)
+      .eq("org_id", orgId)
+      .eq("account_id", selectedCard.id)
+      .eq("type", "expense")
+      .is("deleted_at", null)
+      .gte("date", rangeStart)
+      .lte("date", rangeEnd)
+      .order("date", { ascending: false }),
+  ]);
 
-  const allRows = ((txRows ?? []) as TxRow[]).filter((row) => !isRetroactiveInstallmentBackfill(row));
+  if (dueMonthResult.error || dateRangeResult.error) {
+    console.error("Erro ao buscar fatura por vencimento:", dueMonthResult.error ?? dateRangeResult.error);
+  }
+
+  const mergedRows = new Map<string, TxRow>();
+  for (const row of (dueMonthResult.data ?? []) as TxRow[]) {
+    mergedRows.set(row.id, row);
+  }
+  for (const row of (dateRangeResult.data ?? []) as TxRow[]) {
+    if (!mergedRows.has(row.id)) {
+      mergedRows.set(row.id, row);
+    }
+  }
+
+  const allRows = Array.from(mergedRows.values()).filter((row) => !isRetroactiveInstallmentBackfill(row));
   const invoiceRows = allRows
     .map((row) => {
       const dueDate = isDueDateInvalid(row.date, row.due_date)
@@ -144,9 +197,23 @@ export default async function FaturasPage({
   const pendingAmount = invoiceRows
     .filter((row) => row.status === "pending")
     .reduce((sum, row) => sum + Math.abs(Number(row.amount)), 0);
+  const pendingCount = invoiceRows.filter((row) => row.status === "pending").length;
+
+  const { data: pendingLimitRows } = await supabase
+    .from("transactions")
+    .select("amount, type, status, date, installment_id, created_at, metadata")
+    .eq("org_id", orgId)
+    .eq("account_id", selectedCard.id)
+    .eq("type", "expense")
+    .eq("status", "pending")
+    .is("deleted_at", null);
+
+  const committedLimit = ((pendingLimitRows ?? []) as PendingLimitRow[])
+    .filter((row) => !isRetroactiveInstallmentBackfill(row))
+    .reduce((sum, row) => sum + Math.abs(Number(row.amount)), 0);
 
   const creditLimit = Number(selectedCard.credit_limit ?? 0);
-  const usagePct = creditLimit > 0 ? (totalAmount / creditLimit) * 100 : 0;
+  const usagePct = creditLimit > 0 ? (committedLimit / creditLimit) * 100 : 0;
 
   return (
     <div className="space-y-6">
@@ -212,7 +279,7 @@ export default async function FaturasPage({
               <div className="space-y-1">
                 <p className="text-2xl font-bold">{usagePct.toFixed(1)}%</p>
                 <p className="text-xs text-muted-foreground">
-                  {formatCurrency(totalAmount)} de {formatCurrency(creditLimit)}
+                  {formatCurrency(committedLimit)} de {formatCurrency(creditLimit)}
                 </p>
               </div>
             ) : (
@@ -229,11 +296,19 @@ export default async function FaturasPage({
             {selectedCard.closing_day ? ` | fechamento dia ${selectedCard.closing_day}` : ""}
             {selectedCard.due_day ? ` | vencimento dia ${selectedCard.due_day}` : ""}
           </CardTitle>
-          <Button asChild variant="outline" size="sm">
-            <Link href={`/dashboard/cartoes/${selectedCard.id}?month=${selectedMonth}`}>
-              Ver Detalhes Completos
-            </Link>
-          </Button>
+          <div className="flex items-center gap-2">
+            <PayInvoiceButton
+              accountId={selectedCard.id}
+              invoiceMonth={selectedMonth}
+              pendingAmount={pendingAmount}
+              pendingCount={pendingCount}
+            />
+            <Button asChild variant="outline" size="sm">
+              <Link href={`/dashboard/cartoes/${selectedCard.id}?month=${selectedMonth}`}>
+                Ver Detalhes Completos
+              </Link>
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           {invoiceRows.length === 0 ? (

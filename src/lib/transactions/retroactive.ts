@@ -1,5 +1,6 @@
 export type RetroactiveInstallmentCandidate = {
   type?: string | null;
+  status?: string | null;
   date?: string | null;
   installment_id?: string | null;
   created_at?: string | null;
@@ -16,6 +17,10 @@ export function isRetroactiveInstallmentBackfill(tx: RetroactiveInstallmentCandi
   if (txType !== "expense") return false;
   if (!tx.installment_id) return false;
 
+  const txStatus = tx.status ?? null;
+  if (txStatus !== "cleared" && txStatus !== "reconciled") return false;
+
+  // Nunca ocultar parcelas pendentes; somente backfill liquidado deve ser ignorado.
   if (hasExcludeFromCashBalanceFlag(tx.metadata)) return true;
 
   if (!tx.date || !/^\d{4}-\d{2}-\d{2}$/.test(tx.date)) return false;

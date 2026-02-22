@@ -3,10 +3,13 @@
 import { createClient } from "@/lib/supabase/server";
 import { addMonths, subMonths, isBefore, isAfter, startOfDay, endOfDay } from "date-fns";
 import { isRetroactiveInstallmentBackfill } from "@/lib/transactions/retroactive";
+import { toISODateLocal } from "@/lib/utils";
+import { revalidatePath } from "next/cache";
 
 export interface InvoiceTransaction {
     id: string;
     type: "income" | "expense" | "transfer";
+    status?: "pending" | "cleared" | "reconciled" | "cancelled" | string;
     amount: number;
     date: string;
     description: string | null;
@@ -31,6 +34,12 @@ export interface InvoiceData {
         closing_day: number;
         due_day: number;
     };
+    limit: {
+        committed: number;
+        available: number;
+        usagePct: number;
+        pendingCount: number;
+    };
     period: {
         start: Date;
         end: Date;
@@ -43,6 +52,75 @@ export interface InvoiceData {
         dueDate: Date;
     };
     transactions: InvoiceTransaction[];
+}
+
+type PendingInvoiceRow = {
+    id: string;
+    date: string;
+    due_date: string | null;
+    amount: number;
+    status: "pending" | "cleared" | "reconciled" | "cancelled" | string;
+    installment_id?: string | null;
+    created_at?: string | null;
+    metadata?: Record<string, unknown> | null;
+};
+
+function daysInMonth(year: number, monthIndex: number) {
+    return new Date(year, monthIndex + 1, 0).getDate();
+}
+
+function toIsoDate(year: number, monthIndex: number, day: number) {
+    const safeDay = Math.min(day, daysInMonth(year, monthIndex));
+    return toISODateLocal(new Date(year, monthIndex, safeDay));
+}
+
+function isDueDateInvalid(txDate: string, dueDate: string | null): boolean {
+    if (!dueDate) return true;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) return true;
+    return dueDate < txDate;
+}
+
+function computeFallbackDueDate(dateStr: string, closingDay?: number | null, dueDay?: number | null) {
+    const txDate = new Date(`${dateStr}T12:00:00`);
+    const txDay = txDate.getDate();
+
+    if (!dueDay) return dateStr;
+
+    let monthOffset = 0;
+    const hasClosingDay = Boolean(closingDay && closingDay >= 1 && closingDay <= 31);
+    if (hasClosingDay) {
+        if (txDay > Number(closingDay)) {
+            monthOffset += 1;
+        }
+        if (dueDay <= Number(closingDay)) {
+            monthOffset += 1;
+        }
+    } else if (txDay > dueDay) {
+        monthOffset = 1;
+    }
+
+    let target = new Date(txDate.getFullYear(), txDate.getMonth() + monthOffset, 1);
+    let dueIso = toIsoDate(target.getFullYear(), target.getMonth(), dueDay);
+
+    let safety = 0;
+    while (dueIso < dateStr && safety < 24) {
+        target = new Date(target.getFullYear(), target.getMonth() + 1, 1);
+        dueIso = toIsoDate(target.getFullYear(), target.getMonth(), dueDay);
+        safety += 1;
+    }
+
+    return dueIso;
+}
+
+function normalizeInvoiceMonth(value: string) {
+    const match = /^(\d{4})-(\d{2})$/.exec(value);
+    if (!match) return null;
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) {
+        return null;
+    }
+    return { year, month };
 }
 
 export async function getInvoiceData(accountId: string, year?: number, month?: number): Promise<{ data?: InvoiceData; error?: string }> {
@@ -91,8 +169,8 @@ export async function getInvoiceData(accountId: string, year?: number, month?: n
     }
 
     // 3. Fetch Transactions
-    const periodStartIso = periodStart.toISOString().slice(0, 10);
-    const periodEndIso = periodEnd.toISOString().slice(0, 10);
+    const periodStartIso = toISODateLocal(periodStart);
+    const periodEndIso = toISODateLocal(periodEnd);
     const { data: transactions, error: txError } = await supabase
         .from("transactions")
         .select(`
@@ -130,6 +208,27 @@ export async function getInvoiceData(accountId: string, year?: number, month?: n
     // Outstanding invoice debt never goes below zero.
     const total = Math.max(summary.expense - summary.income, 0);
 
+    // 4.1 Credit limit commitment is based on all pending expenses in this card,
+    // including future installments that are still unpaid.
+    const { data: pendingRows, error: pendingError } = await supabase
+        .from("transactions")
+        .select("amount, type, status, date, installment_id, created_at, metadata")
+        .eq("account_id", accountId)
+        .eq("type", "expense")
+        .eq("status", "pending")
+        .is("deleted_at", null);
+
+    if (pendingError) {
+        console.error("Error fetching pending limit rows:", pendingError);
+        return { error: "Erro ao calcular consumo de limite" };
+    }
+
+    const visiblePendingRows = (pendingRows ?? []).filter((tx) => !isRetroactiveInstallmentBackfill(tx));
+    const committedLimit = visiblePendingRows.reduce((sum, row) => sum + Math.abs(Number(row.amount) || 0), 0);
+    const creditLimit = Number(account.credit_limit ?? 0);
+    const availableLimit = creditLimit - committedLimit;
+    const usagePct = creditLimit > 0 ? (committedLimit / creditLimit) * 100 : 0;
+
     // 5. Determine Status
     let status: "open" | "closed" | "overdue" | "paid" = "closed";
 
@@ -145,6 +244,12 @@ export async function getInvoiceData(accountId: string, year?: number, month?: n
     return {
         data: {
             account,
+            limit: {
+                committed: committedLimit,
+                available: availableLimit,
+                usagePct,
+                pendingCount: visiblePendingRows.length,
+            },
             period: {
                 start: periodStart,
                 end: periodEnd,
@@ -167,7 +272,7 @@ export async function getAvailableInvoices(accountId: string) {
     // Fetch distinct months from transactions
     const { data, error } = await supabase
         .from("transactions")
-        .select("date, type, installment_id, created_at, metadata")
+        .select("date, type, status, installment_id, created_at, metadata")
         .eq("account_id", accountId)
         .is("deleted_at", null)
         .order("date", { ascending: false });
@@ -180,7 +285,7 @@ export async function getAvailableInvoices(accountId: string) {
     const visibleRows = (data ?? []).filter((tx) => !isRetroactiveInstallmentBackfill(tx));
 
     for (const tx of visibleRows) {
-        const date = new Date(tx.date);
+        const date = new Date(`${tx.date}T12:00:00`);
         const key = `${date.getFullYear()}-${date.getMonth()}`;
         if (!uniqueMonths.has(key)) {
             uniqueMonths.add(key);
@@ -221,4 +326,153 @@ export async function getAvailableInvoices(accountId: string) {
         if (a.year !== b.year) return b.year - a.year;
         return b.month - a.month;
     });
+}
+
+export async function payInvoice(accountId: string, invoiceMonth: string): Promise<{
+    data?: { updatedCount: number; paidAmount: number };
+    error?: string;
+}> {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { error: "Nao autorizado" };
+    if (!accountId) return { error: "Cartao invalido" };
+
+    const normalizedMonth = normalizeInvoiceMonth(invoiceMonth);
+    if (!normalizedMonth) return { error: "Mes da fatura invalido. Use YYYY-MM." };
+
+    const { data: account, error: accountError } = await supabase
+        .from("accounts")
+        .select("id, org_id, name, type, is_credit_card, closing_day, due_day")
+        .eq("id", accountId)
+        .single();
+
+    if (accountError || !account) return { error: "Cartao nao encontrado" };
+
+    const { data: member } = await supabase
+        .from("org_members")
+        .select("org_id")
+        .eq("org_id", account.org_id)
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+    if (!member) return { error: "Sem permissao para pagar esta fatura" };
+
+    const isCreditCard = Boolean(account.is_credit_card) || account.type === "credit_card";
+    if (!isCreditCard) return { error: "A conta informada nao e cartao de credito" };
+    if (!account.due_day) return { error: "Cartao sem vencimento configurado" };
+
+    const targetMonthDate = new Date(`${invoiceMonth}-01T12:00:00`);
+    if (Number.isNaN(targetMonthDate.getTime())) return { error: "Mes da fatura invalido" };
+
+    const monthStart = toISODateLocal(new Date(normalizedMonth.year, normalizedMonth.month - 1, 1));
+    const monthEnd = toISODateLocal(new Date(normalizedMonth.year, normalizedMonth.month, 0));
+    const rangeStart = toISODateLocal(new Date(targetMonthDate.getFullYear(), targetMonthDate.getMonth() - 2, 1));
+    const rangeEnd = toISODateLocal(new Date(targetMonthDate.getFullYear(), targetMonthDate.getMonth() + 2, 0));
+
+    const baseSelect = "id, date, due_date, amount, status, installment_id, created_at, metadata";
+    const [dueMonthPendingResult, dateRangePendingResult] = await Promise.all([
+        supabase
+            .from("transactions")
+            .select(baseSelect)
+            .eq("org_id", account.org_id)
+            .eq("account_id", accountId)
+            .eq("type", "expense")
+            .eq("status", "pending")
+            .is("deleted_at", null)
+            .gte("due_date", monthStart)
+            .lte("due_date", monthEnd)
+            .order("date", { ascending: false }),
+        supabase
+            .from("transactions")
+            .select(baseSelect)
+            .eq("org_id", account.org_id)
+            .eq("account_id", accountId)
+            .eq("type", "expense")
+            .eq("status", "pending")
+            .is("deleted_at", null)
+            .gte("date", rangeStart)
+            .lte("date", rangeEnd)
+            .order("date", { ascending: false }),
+    ]);
+
+    if (dueMonthPendingResult.error || dateRangePendingResult.error) {
+        const error = dueMonthPendingResult.error ?? dateRangePendingResult.error;
+        return { error: error.message };
+    }
+
+    const monthKey = `${normalizedMonth.year}-${String(normalizedMonth.month).padStart(2, "0")}`;
+    const mergedPendingRows = new Map<string, PendingInvoiceRow>();
+    for (const row of (dueMonthPendingResult.data ?? []) as PendingInvoiceRow[]) {
+        mergedPendingRows.set(row.id, row);
+    }
+    for (const row of (dateRangePendingResult.data ?? []) as PendingInvoiceRow[]) {
+        if (!mergedPendingRows.has(row.id)) {
+            mergedPendingRows.set(row.id, row);
+        }
+    }
+
+    const visiblePendingRows = Array.from(mergedPendingRows.values()).filter(
+        (row) => !isRetroactiveInstallmentBackfill(row)
+    );
+
+    const invoiceRows = visiblePendingRows.filter((row) => {
+        const dueDate = isDueDateInvalid(row.date, row.due_date)
+            ? computeFallbackDueDate(row.date, account.closing_day ?? null, account.due_day ?? null)
+            : row.due_date;
+        return dueDate?.slice(0, 7) === monthKey;
+    });
+
+    if (invoiceRows.length === 0) {
+        return {
+            data: {
+                updatedCount: 0,
+                paidAmount: 0,
+            },
+        };
+    }
+
+    const idsToClear = invoiceRows.map((row) => row.id);
+    const paidAmount = invoiceRows.reduce((sum, row) => sum + Math.abs(Number(row.amount) || 0), 0);
+
+    const { data: updatedRows, error: updateError } = await supabase
+        .from("transactions")
+        .update({
+            status: "cleared",
+            updated_at: new Date().toISOString(),
+        })
+        .eq("org_id", account.org_id)
+        .eq("account_id", accountId)
+        .eq("status", "pending")
+        .in("id", idsToClear)
+        .select("id");
+
+    if (updateError) return { error: updateError.message };
+
+    await supabase.from("audit_logs").insert({
+        org_id: account.org_id,
+        user_id: user.id,
+        action: "invoice_pay",
+        table_name: "transactions",
+        record_id: null,
+        new_data: {
+            account_id: accountId,
+            account_name: account.name,
+            invoice_month: monthKey,
+            updated_count: updatedRows?.length ?? 0,
+            paid_amount: paidAmount,
+        },
+        origin: "UI",
+    });
+
+    revalidatePath("/dashboard");
+    revalidatePath("/dashboard/faturas");
+    revalidatePath("/dashboard/lancamentos");
+    revalidatePath(`/dashboard/cartoes/${accountId}`);
+
+    return {
+        data: {
+            updatedCount: updatedRows?.length ?? idsToClear.length,
+            paidAmount,
+        },
+    };
 }

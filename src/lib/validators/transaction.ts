@@ -15,7 +15,7 @@ export const transactionSchema = z
     transferAccountId: z.string().uuid().optional().nullable(),
 
     isInstallment: z.boolean().default(false),
-    installments: z.coerce.number().min(2, "Minimo de 2 parcelas").optional().nullable(),
+    installments: z.coerce.number().int("Informe um numero inteiro de parcelas").min(2, "Minimo de 2 parcelas").max(120, "Maximo de 120 parcelas").optional().nullable(),
     installmentInputType: z.enum(["total", "installment"]).default("total"),
 
     isRecurring: z.boolean().default(false),
@@ -61,4 +61,3 @@ export const transactionSchema = z
   });
 
 export type TransactionFormValues = z.infer<typeof transactionSchema>;
-
