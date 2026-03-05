@@ -96,7 +96,7 @@ export async function upsertCategoryBudgetsBatch(input: UpsertBudgetBatchInput):
     alert_threshold: number;
   }> = [];
 
-  for (const [categoryId, values] of deduped.entries()) {
+  for (const [categoryId, values] of Array.from(deduped.entries())) {
     if (!Number.isFinite(values.amount) || values.amount <= 0) {
       return { error: `Valor invalido para categoria ${categoryId}.` };
     }

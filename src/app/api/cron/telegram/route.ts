@@ -1,15 +1,17 @@
 import { createClient } from "@/lib/supabase/server";
 import { sendTelegramMessage, TelegramConfigInput } from "@/app/actions/notifications";
 import { formatCurrency } from "@/lib/utils";
-import { startOfMonth, endOfMonth, addDays, format, isSameDay } from "date-fns";
+import { addDays, format, isSameDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
 export async function GET(request: Request) {
-    // Optional: Check for CRON_SECRET if deploying to Vercel
-    // const authHeader = request.headers.get('authorization');
-    // if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    //   return new Response('Unauthorized', { status: 401 });
-    // }
+    const secret = process.env.CRON_SECRET;
+    if (secret) {
+        const authHeader = request.headers.get("authorization");
+        if (authHeader !== `Bearer ${secret}`) {
+            return new Response("Unauthorized", { status: 401 });
+        }
+    }
 
     const supabase = await createClient();
 
@@ -36,12 +38,12 @@ export async function GET(request: Request) {
         // --- A. Daily Summary (Balance + Projection) ---
         if (config.preferences?.daily_summary) {
             // Fetch Account Balances
-            const { data: accounts } = await supabase
+            await supabase
                 .from("accounts")
                 .select("initial_balance, id")
                 .eq("org_id", org.id);
 
-            // Calculate Current Balance (simplified for Cron - ideally use a helper)
+            // Calculate Current Balance (MVP: summary only) (simplified for Cron - ideally use a helper)
             // We really need the helper from 'actions/projections' or similar, but those are server actions.
             // Let's do a quick calculation or skip complexity for MVP.
             // MVP: Just show "Moedinha Check-in"

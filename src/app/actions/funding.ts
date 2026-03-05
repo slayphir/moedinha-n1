@@ -45,7 +45,7 @@ export async function getPendingFunding(orgId: string) {
     const totalIncome = incomeTx?.reduce((sum, tx) => sum + tx.amount, 0) || 0;
 
     // Calculate expected funding for each bucket
-    const fundingPlan = distribution.buckets.map((bucket: any) => ({
+    const fundingPlan = distribution.buckets.map((bucket: { id: string; name: string; percent_bps: number; color?: string }) => ({
         bucketId: bucket.id,
         bucketName: bucket.name,
         targetAmount: (totalIncome * bucket.percent_bps) / 10000,

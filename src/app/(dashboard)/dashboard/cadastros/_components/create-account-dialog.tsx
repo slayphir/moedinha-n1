@@ -30,7 +30,6 @@ export function CreateAccountDialog({
     onOpenChange,
     onSuccess,
     defaultType,
-    defaultOpen,
 }: {
     open: boolean;
     onOpenChange: (open: boolean) => void;
@@ -58,7 +57,6 @@ export function CreateAccountDialog({
     });
 
     const isCreditCard = form.watch("isCreditCard");
-    const accountType = form.watch("type");
 
     // Auto-check "isCreditCard" if type is "credit_card" (if user selects explicitly)
     // Or we handle logic below.

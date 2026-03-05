@@ -1,8 +1,8 @@
-﻿"use server";
+"use server";
 
 import { createClient } from "@/lib/supabase/server";
 import { getActiveOrgIdForUser } from "@/lib/active-org";
-import { addMonths, addWeeks, addYears, endOfMonth, format, getDay, isAfter, isBefore, isSameDay, isSameMonth, parseISO, startOfMonth, startOfWeek, endOfWeek, addDays, getDaysInMonth } from "date-fns";
+import { addMonths, addWeeks, addYears, endOfMonth, format, isAfter, isBefore, parseISO, getDaysInMonth } from "date-fns";
 import { RecurringRule } from "@/lib/types/database";
 
 export type CalendarEvent = {
@@ -65,7 +65,7 @@ export async function getMonthFinancialEvents(year: number, month: number) {
         .eq("success", true);
 
     const lastRunMap: Record<string, Date> = {};
-    (lastRuns || []).forEach((run: any) => {
+    (lastRuns || []).forEach((run: { rule_id: string; run_at: string }) => {
         const d = parseISO(run.run_at);
         if (!lastRunMap[run.rule_id] || d > lastRunMap[run.rule_id]) {
             lastRunMap[run.rule_id] = d;

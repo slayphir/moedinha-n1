@@ -37,6 +37,7 @@ export async function createOrganization(input: { name: string; slug?: string })
   });
 
   try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- postgres transaction type is not exported
     const result = await sql.begin(async (txn: any) => {
       // 1. Create Org
       const [org] = await txn`
@@ -74,18 +75,14 @@ export async function createOrganization(input: { name: string; slug?: string })
     console.log("[create-org] Success via direct DB:", result);
     return { success: true };
 
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const err = error as { code?: string; message?: string };
     console.error("[create-org] DB Error:", error);
-    if (error.code === "23505") { // Unique violation
+    if (err.code === "23505") { // Unique violation
       return { error: "Slug ja existe. Tente outro." };
     }
-    return { error: "Erro ao criar organizacao: " + (error.message || "Erro desconhecido") };
+    return { error: "Erro ao criar organizacao: " + (err.message || "Erro desconhecido") };
   } finally {
     await sql.end();
   }
-}
-
-function formatDbError(err: any): string {
-  // Legacy helper, keeping for compatibility if needed inside try/catch but mostly replaced
-  return err.message || "Erro desconhecido";
 }

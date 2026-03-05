@@ -11,6 +11,7 @@ import { useOrg } from "@/contexts/org-context";
 import { CommandPalette } from "./command-palette";
 import { cn } from "@/lib/utils";
 import { AddTransactionFAB } from "../dashboard/_components/add-transaction-fab";
+import { DashboardRealtimeRefresh } from "./dashboard-realtime-refresh";
 
 export function DashboardShell({
   children,
@@ -21,7 +22,7 @@ export function DashboardShell({
 }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const { org } = useOrg();
+  const { org, orgId } = useOrg();
   const [configOpen, setConfigOpen] = useState(true);
 
   async function signOut() {
@@ -36,41 +37,41 @@ export function DashboardShell({
       title: "Principal",
       items: [
         { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-        { href: "/dashboard/lancamentos", label: "Lançamentos", icon: List },
-        { href: "/dashboard/distribuicao", label: "Distribuição 50/30/20", icon: Percent },
-        { href: "/dashboard/faturas", label: "Cartões & Faturas", icon: CreditCard },
+        { href: "/dashboard/lancamentos", label: "LanÃ§amentos", icon: List },
+        { href: "/dashboard/distribuicao", label: "DistribuiÃ§Ã£o 50/30/20", icon: Percent },
+        { href: "/dashboard/faturas", label: "CartÃµes & Faturas", icon: CreditCard },
         { href: "/dashboard/metas", label: "Metas & Objetivos", icon: Target },
-        { href: "/dashboard/relatorios", label: "Relatórios", icon: BarChart3 },
+        { href: "/dashboard/relatorios", label: "RelatÃ³rios", icon: BarChart3 },
         { href: "/dashboard/relatorios/ir", label: "Auxiliar IR", icon: FileText },
-        { href: "/dashboard/calendario", label: "Calendário", icon: CalendarIcon },
+        { href: "/dashboard/calendario", label: "CalendÃ¡rio", icon: CalendarIcon },
         { href: "/dashboard/assinaturas", label: "Assinaturas", icon: Repeat },
       ],
     },
     {
-      title: "Configurações",
+      title: "ConfiguraÃ§Ãµes",
       collapsible: true,
       items: [
         { href: "/dashboard/cadastros?tab=accounts", label: "Contas", icon: Wallet },
         { href: "/dashboard/cadastros?tab=categories", label: "Categorias", icon: List },
-        { href: "/dashboard/cadastros?tab=budgets", label: "Orçamentos", icon: Wallet },
+        { href: "/dashboard/cadastros?tab=budgets", label: "OrÃ§amentos", icon: Wallet },
         { href: "/dashboard/cadastros?tab=tags", label: "Regras / Tags", icon: Tag },
         { href: "/dashboard/cadastros?tab=contacts", label: "Contatos", icon: Users },
-        { href: "/dashboard/configuracoes", label: "Preferências", icon: Settings },
+        { href: "/dashboard/configuracoes", label: "PreferÃªncias", icon: Settings },
       ],
     },
     {
-      title: "Gamificação",
+      title: "GamificaÃ§Ã£o",
       items: [
-        { href: "/dashboard/cofre", label: "Cofre (Nível)", icon: Coins },
+        { href: "/dashboard/cofre", label: "Cofre (NÃ­vel)", icon: Coins },
       ],
     },
   ];
 
-  // Mobile bottom nav — only essential items
+  // Mobile bottom nav â€” only essential items
   const mobileNavItems = [
-    { href: "/dashboard", label: "Início", icon: LayoutDashboard },
-    { href: "/dashboard/lancamentos", label: "Lançamentos", icon: List },
-    { href: "/dashboard/distribuicao", label: "Distribuição", icon: Percent },
+    { href: "/dashboard", label: "InÃ­cio", icon: LayoutDashboard },
+    { href: "/dashboard/lancamentos", label: "LanÃ§amentos", icon: List },
+    { href: "/dashboard/distribuicao", label: "DistribuiÃ§Ã£o", icon: Percent },
     { href: "/dashboard/metas", label: "Metas", icon: Target },
   ];
 
@@ -78,12 +79,13 @@ export function DashboardShell({
 
   return (
     <div className="flex min-h-screen flex-col md:flex-row">
-      {/* ── Desktop Sidebar (hidden on mobile) ── */}
+      <DashboardRealtimeRefresh orgId={orgId} />
+      {/* â”€â”€ Desktop Sidebar (hidden on mobile) â”€â”€ */}
       <aside className="hidden md:sticky md:top-0 md:flex md:w-64 md:flex-col md:border-r md:border-stroke md:h-screen md:overflow-y-auto bg-gradient-to-b from-vault-950 to-vault-900 text-paper">
         <div className="flex h-14 items-center gap-2 border-b border-paper/20 px-4">
           <Link href="/dashboard" className="flex items-center gap-2 font-semibold text-coin">
             <Coins className="h-4 w-4 animate-coin-spin" />
-            <span className="font-display text-lg coin-shimmer">Moedinha Nº1</span>
+            <span className="font-display text-lg coin-shimmer">Moedinha NÂº1</span>
           </Link>
         </div>
 
@@ -142,7 +144,7 @@ export function DashboardShell({
         </div>
       </aside>
 
-      {/* ── Mobile Bottom Nav Bar ── */}
+      {/* â”€â”€ Mobile Bottom Nav Bar â”€â”€ */}
       <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-stroke bg-vault-950/95 backdrop-blur-md md:hidden safe-area-bottom">
         <div className="flex items-stretch justify-around px-1">
           {mobileNavItems.map((item) => {
@@ -175,7 +177,7 @@ export function DashboardShell({
         </div>
       </nav>
 
-      {/* ── Mobile "Mais" Drawer ── */}
+      {/* â”€â”€ Mobile "Mais" Drawer â”€â”€ */}
       {mobileMenuOpen && (
         <>
           <div className="fixed inset-0 z-50 bg-black/50 md:hidden" onClick={() => setMobileMenuOpen(false)} />

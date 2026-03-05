@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { getIncomeTaxData, IRData } from "@/app/actions/ir-helper";
 import { IncomeTaxReport } from "../_components/income-tax-report";
 import { Button } from "@/components/ui/button";
@@ -13,18 +13,18 @@ export default function IncomeTaxPage() {
     const [data, setData] = useState<IRData | null>(null);
     const [loading, setLoading] = useState(true);
 
-    useEffect(() => {
-        fetchData();
-    }, [year]);
-
-    async function fetchData() {
+    const fetchData = useCallback(async () => {
         setLoading(true);
         const res = await getIncomeTaxData(parseInt(year));
         if (res.data) {
             setData(res.data);
         }
         setLoading(false);
-    }
+    }, [year]);
+
+    useEffect(() => {
+        fetchData();
+    }, [fetchData]);
 
     const handlePrint = () => {
         window.print();

@@ -36,7 +36,7 @@ export function CashFlowChart({ data }: CashFlowChartProps) {
     const maxBalance = Math.max(...data.map(d => d.balance));
 
     // Custom Tooltip
-    const CustomTooltip = ({ active, payload, label }: any) => {
+    const CustomTooltip = ({ active, payload }: { active?: boolean; payload?: Array<{ payload: DailyProjection }> }) => {
         if (active && payload && payload.length) {
             const dayData = payload[0].payload as DailyProjection;
             return (

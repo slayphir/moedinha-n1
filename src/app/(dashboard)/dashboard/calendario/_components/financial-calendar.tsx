@@ -1,14 +1,13 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { format, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, startOfWeek, endOfWeek, isSameMonth, isSameDay, isToday } from "date-fns";
+import { format, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, startOfWeek, endOfWeek, isSameMonth, isToday } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { ChevronLeft, ChevronRight, MoreHorizontal, Calendar as CalendarIcon } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { formatCurrency } from "@/lib/utils";
-import { CalendarDayData, CalendarEvent } from "@/app/actions/calendar";
+import { CalendarDayData } from "@/app/actions/calendar";
 import { cn } from "@/lib/utils";
 
 interface FinancialCalendarProps {
@@ -18,7 +17,7 @@ interface FinancialCalendarProps {
 }
 
 export function FinancialCalendar({ initialData, currentDate, onMonthChange }: FinancialCalendarProps) {
-    const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+    const [, setSelectedDate] = useState<Date | null>(null);
 
     const monthStart = startOfMonth(currentDate);
     const monthEnd = endOfMonth(monthStart);
@@ -63,13 +62,10 @@ export function FinancialCalendar({ initialData, currentDate, onMonthChange }: F
                 ))}
 
                 {/* Calendar Grid */}
-                {calendarDays.map((day, dayIdx) => {
+                {calendarDays.map((day) => {
                     const dayStr = format(day, "yyyy-MM-dd");
                     const dayData = daysDataMap.get(dayStr);
                     const isCurrentMonth = isSameMonth(day, monthStart);
-                    const isSelected = selectedDate && isSameDay(day, selectedDate);
-
-                    const hasEvents = dayData && dayData.events.length > 0;
                     const balance = dayData?.balance_change ?? 0;
                     const isPositive = balance >= 0;
 

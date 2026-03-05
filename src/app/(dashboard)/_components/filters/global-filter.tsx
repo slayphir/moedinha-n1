@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useFilter } from "@/contexts/filter-context";
-import { Button } from "@/components/ui/button";
+import type { PeriodPreset } from "@/contexts/filter-context";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
 import {
     Select,
@@ -11,16 +11,13 @@ import {
     SelectTrigger,
     SelectValue
 } from "@/components/ui/select";
-import { Calendar as CalendarIcon, Filter } from "lucide-react";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { cn } from "@/lib/utils";
 
 export function GlobalFilter() {
     const { preset, setPreset, dateRange, setDateRange } = useFilter();
 
     return (
         <div className="flex items-center gap-2">
-            <Select value={preset} onValueChange={(val: any) => setPreset(val)}>
+            <Select value={preset} onValueChange={(val: PeriodPreset) => setPreset(val)}>
                 <SelectTrigger className="w-[140px] h-9 text-xs">
                     <SelectValue placeholder="Período" />
                 </SelectTrigger>

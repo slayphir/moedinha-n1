@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useCallback, useMemo } from "react";
-import { useRouter } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -165,7 +164,6 @@ const XP_VALUES = {
 
 export function SetupWizard({ orgId, existingAccounts, existingCategories }: SetupWizardProps) {
     const { toast } = useToast();
-    const router = useRouter();
     const [step, setStep] = useState(0);
     const [direction, setDirection] = useState<"next" | "prev">("next");
     const [loading, setLoading] = useState(false);

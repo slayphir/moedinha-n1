@@ -1,4 +1,4 @@
-﻿"use server";
+"use server";
 
 import { createClient } from "@/lib/supabase/server";
 import { getActiveOrgIdForUser } from "@/lib/active-org";
@@ -73,7 +73,7 @@ export async function testTelegramIntegration(chatId: string) {
         }
 
         return { success: true };
-    } catch (error) {
+    } catch {
         return { error: "Falha ao conectar com API do Telegram" };
     }
 }

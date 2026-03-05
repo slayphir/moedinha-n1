@@ -1,11 +1,9 @@
 "use client";
 
-import { useState } from "react";
 import { RecurringRule } from "@/lib/types/database";
 import { formatCurrency } from "@/lib/utils";
 import { format, parseISO } from "date-fns";
-import { ptBR } from "date-fns/locale";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";

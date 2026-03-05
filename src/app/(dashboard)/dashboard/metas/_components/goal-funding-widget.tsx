@@ -21,12 +21,17 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/components/ui/label";
 import { useOrg } from "@/contexts/org-context";
 
+interface FundingPlanItem {
+    bucketName: string;
+    targetAmount: number;
+}
+
 export function GoalFundingWidget() {
     const { org } = useOrg();
     const { accounts } = useFinancialData();
     const { toast } = useToast();
     const [loading, setLoading] = useState(true);
-    const [data, setData] = useState<{ totalIncome: number; fundingPlan: any[] } | null>(null);
+    const [data, setData] = useState<{ totalIncome: number; fundingPlan: FundingPlanItem[] } | null>(null);
     const [open, setOpen] = useState(false);
     const [selectedAccount, setSelectedAccount] = useState<string>("");
     const [executing, setExecuting] = useState(false);
@@ -46,7 +51,7 @@ export function GoalFundingWidget() {
     // Actually, let's just show the summary.
 
     // Find "Metas" bucket or similar
-    const goalsBucket = data.fundingPlan.find((b: any) =>
+    const goalsBucket = data.fundingPlan.find((b: FundingPlanItem) =>
         b.bucketName.toLowerCase().includes("metas") ||
         b.bucketName.toLowerCase().includes("investimentos") ||
         b.bucketName.toLowerCase().includes("poupança")
@@ -59,6 +64,7 @@ export function GoalFundingWidget() {
             toast({ variant: "destructive", title: "Selecione uma conta" });
             return;
         }
+        if (!goalsBucket) return;
 
         setExecuting(true);
         // Execute funding only for the Goals bucket for now
@@ -109,7 +115,7 @@ export function GoalFundingWidget() {
                             <DialogHeader>
                                 <DialogTitle>Confirmar Aporte</DialogTitle>
                                 <DialogDescription>
-                                    Isso criará uma despesa na sua conta, representando a saída do dinheiro "gastável" para suas "Reservas/Metas".
+                                    Isso criará uma despesa na sua conta, representando a saída do dinheiro &quot;gastável&quot; para suas &quot;Reservas/Metas&quot;.
                                 </DialogDescription>
                             </DialogHeader>
                             <div className="space-y-4 py-4">

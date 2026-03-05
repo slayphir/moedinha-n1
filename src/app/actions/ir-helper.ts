@@ -1,8 +1,7 @@
-﻿"use server";
+"use server";
 
 import { createClient } from "@/lib/supabase/server";
 import { getActiveOrgIdForUser } from "@/lib/active-org";
-import { format, parseISO } from "date-fns";
 
 export type IRAccountBalance = {
     id: string;
@@ -70,14 +69,6 @@ export async function getIncomeTaxData(year: number): Promise<{ data?: IRData; e
     // Snapshots
     const snapshotPrevious: Record<string, number> = {}; // at endOfPreviousYear
     const snapshotCurrent: Record<string, number> = {};  // at endOfYear
-
-    // Helper to record snapshots
-    const recordSnapshot = (dateStr: string) => {
-        // If we just passed the boundary, record? 
-        // Easier: Iterate transactions. Before processing a tx, check if we passed a boundary?
-        // Or just run replay, and check dates.
-        // The query is filtered lte endOfYear, so at end of loop we have endOfYear balance.
-    };
 
     // We need to capture state exactly at endOfPreviousYear.
     // We can just iterate and when date > endOfPreviousYear, we freeze the snapshot for those that haven't been captured?

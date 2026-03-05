@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
@@ -75,13 +75,14 @@ export function GoalWizard({ goal, trigger }: Props) {
     useEffect(() => {
         if (open) {
             if (goal) {
+                const allowedTypes: FormValues["type"][] = ["savings", "emergency_fund", "debt", "reduction", "purchase", "piggy_bank"];
                 form.reset({
                     name: goal.name,
-                    type: goal.type,
+                    type: allowedTypes.includes(goal.type as FormValues["type"]) ? goal.type as FormValues["type"] : "purchase",
                     target_amount: goal.target_amount || 0,
                     current_amount: goal.current_amount || 0,
                     target_date: goal.target_date ? new Date(goal.target_date) : new Date(),
-                    strategy: goal.strategy,
+                    strategy: goal.strategy as FormValues["strategy"],
                 });
             } else {
                 form.reset({

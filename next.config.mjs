@@ -12,10 +12,10 @@ const nextConfig = {
       SUPABASE_SERVICE_ROLE_KEY: parsed?.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY,
     },
     eslint: {
-        ignoreDuringBuilds: true,
+        ignoreDuringBuilds: false,
     },
     typescript: {
-        ignoreBuildErrors: true,
+        ignoreBuildErrors: false,
     },
     webpack: (config, { dev }) => {
       if (dev) {

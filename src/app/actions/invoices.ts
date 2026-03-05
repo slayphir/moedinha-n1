@@ -396,8 +396,8 @@ export async function payInvoice(accountId: string, invoiceMonth: string): Promi
     ]);
 
     if (dueMonthPendingResult.error || dateRangePendingResult.error) {
-        const error = dueMonthPendingResult.error ?? dateRangePendingResult.error;
-        return { error: error.message };
+        const err = dueMonthPendingResult.error ?? dateRangePendingResult.error;
+        return { error: err?.message ?? "Erro desconhecido" };
     }
 
     const monthKey = `${normalizedMonth.year}-${String(normalizedMonth.month).padStart(2, "0")}`;

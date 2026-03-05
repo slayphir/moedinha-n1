@@ -109,12 +109,12 @@ export function InsightsFeed({ insights }: Props) {
                                 <p className="text-sm opacity-90 leading-relaxed">
                                     {insight.message}
                                 </p>
-                                {insight.metadata?.increase_pct && (
+                                {(insight.metadata as { increase_pct?: number } | undefined)?.increase_pct != null ? (
                                     <div className="flex items-center gap-1 text-xs font-medium mt-2 opacity-80">
                                         <ArrowUpRight className="h-3 w-3" />
                                         Aumento significativo
                                     </div>
-                                )}
+                                ) : null}
                             </div>
 
                             <Button

@@ -12,7 +12,7 @@ export type Insight = {
     severity: "info" | "warn" | "critical";
     status: "active" | "dismissed" | "acted";
     created_at: string;
-    metadata: any;
+    metadata: Record<string, unknown>;
 };
 
 export async function getInsights() {

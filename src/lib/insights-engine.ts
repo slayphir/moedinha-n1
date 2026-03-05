@@ -9,7 +9,7 @@ interface Insight {
     title: string;
     message: string;
     severity: InsightSeverity;
-    metadata?: any;
+    metadata?: Record<string, unknown>;
 }
 
 export async function runInsightsEngine() {
@@ -63,7 +63,7 @@ export async function runInsightsEngine() {
 
     for (const [catId, amount] of Object.entries(currentSpending)) {
         const lastAmount = lastMonthSpending[catId] || 0;
-        const catName = (currentMonthTx?.find(t => t.category_id === catId)?.categories as any)?.name || "Categoria";
+        const catName = (currentMonthTx?.find(t => t.category_id === catId)?.categories as { name?: string } | null)?.name || "Categoria";
 
         if (lastAmount > 0) { // Only compare if there was spending last month
             const ratio = Math.abs(amount) / Math.abs(lastAmount);
@@ -143,8 +143,9 @@ export async function runInsightsEngine() {
     }
 }
 
-function aggregateByCategory(transactions: any[]): Record<string, number> {
-    return transactions.reduce((acc, t) => {
+interface TxWithCategory { category_id: string | null; amount: number }
+function aggregateByCategory(transactions: TxWithCategory[]): Record<string, number> {
+    return transactions.reduce<Record<string, number>>((acc, t) => {
         if (!t.category_id) return acc;
         acc[t.category_id] = (acc[t.category_id] || 0) + t.amount;
         return acc;

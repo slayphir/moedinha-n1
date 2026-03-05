@@ -6,7 +6,6 @@ import { GoalWizard } from "./_components/goal-wizard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatCurrency } from "@/lib/utils";
 import { differenceInMonths, parseISO, format } from "date-fns";
-import { ptBR } from "date-fns/locale";
 import { AlertTriangle, CheckCircle2, Clock, Target, Trash2, TrendingUp, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
@@ -70,7 +69,7 @@ function PiggyBanksTab({ goals }: { goals: Goal[] }) {
 
 export function MetasClient({ goals, reserveMetrics }: Props) {
     const { toast } = useToast();
-    const [deletingId, setDeletingId] = useState<string | null>(null);
+    const [, setDeletingId] = useState<string | null>(null);
 
     // Filter out emergency fund and piggy banks from general list
     const displaysGoals = goals.filter(g => g.type !== 'emergency_fund' && g.type !== 'piggy_bank');
@@ -237,7 +236,7 @@ export function MetasClient({ goals, reserveMetrics }: Props) {
                                                         <AlertDialogHeader>
                                                             <AlertDialogTitle>Excluir meta?</AlertDialogTitle>
                                                             <AlertDialogDescription>
-                                                                Isso removerá a meta "{goal.name}" do seu painel. O histórico de transações não será afetado.
+                                                                Isso removerá a meta &quot;{goal.name}&quot; do seu painel. O histórico de transações não será afetado.
                                                             </AlertDialogDescription>
                                                         </AlertDialogHeader>
                                                         <AlertDialogFooter>

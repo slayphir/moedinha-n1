@@ -76,7 +76,7 @@ export function BreakPigDialog({ goal, open, onOpenChange, onSuccess }: BreakPig
                 <AlertDialogHeader>
                     <AlertDialogTitle>Quebrar o Porquinho?</AlertDialogTitle>
                     <AlertDialogDescription>
-                        Isso marcará o cofrinho "{goal.name}" como concluído.
+                        Isso marcará o cofrinho &quot;{goal.name}&quot; como concluído.
                         {goal.current_amount < (goal.target_amount || 0) && (
                             <p className="mt-2 text-amber-600 font-medium">
                                 Atenção: Você ainda não atingiu a meta de R$ {goal.target_amount}.

@@ -11,7 +11,6 @@ import {
   differenceInDays,
   getDaysInMonth,
   min as minDate,
-  max as maxDate,
 } from "date-fns";
 import type { MonthSnapshotBucketData } from "@/lib/types/database";
 
@@ -132,8 +131,7 @@ export async function getActiveDistribution(
   orgId: string,
   month: Date
 ): Promise<{ distribution: DistributionRow; buckets: BucketRow[] } | null> {
-  const monthStr = month.toISOString().slice(0, 10);
-
+  void month; // reserved for future month-scoped query
   // Prefer default distribution; else one active in this month
   const { data: defaultDist } = await supabase
     .from("distributions")
