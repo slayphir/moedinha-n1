@@ -5,15 +5,24 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
-  startOfMonth,
+  addMonths,
   endOfMonth,
-  subMonths,
-  differenceInDays,
+  format,
   getDaysInMonth,
   min as minDate,
+  startOfMonth,
+  subMonths,
+  differenceInDays,
 } from "date-fns";
+import { ptBR } from "date-fns/locale";
 import type { MonthSnapshotBucketData } from "@/lib/types/database";
-import { attachCategoryType, sumReceitas, isDespesa, isReceita } from "@/lib/transactions/classification";
+import {
+  attachCategoryType,
+  isDespesa,
+  isReceita,
+  sumDespesas,
+  sumReceitas,
+} from "@/lib/transactions/classification";
 
 const TOTAL_BPS = 10000;
 
@@ -338,5 +347,83 @@ export async function computeMonthlyMetrics(
     day_ratio: dayRatio,
     total_spend,
     total_budget,
+  };
+}
+
+async function totalDespesasOperacionaisMonth(
+  supabase: SupabaseClient,
+  orgId: string,
+  month: Date
+): Promise<number> {
+  const { start, end } = monthRange(month);
+  const { contactPaysMeCategoryIds, categoryTypeById } = await getCategoryMetadata(supabase, orgId);
+  const { data } = await supabase
+    .from("transactions")
+    .select("amount, type, contact_id, category_id, contact_payment_direction")
+    .eq("org_id", orgId)
+    .neq("type", "transfer")
+    .in("status", ["cleared", "reconciled"])
+    .gte("date", start)
+    .lte("date", end)
+    .is("deleted_at", null);
+  return sumDespesas(
+    attachCategoryType(
+      (data ?? []) as {
+        amount: number | string | null;
+        type: string;
+        contact_id?: string | null;
+        category_id?: string | null;
+        contact_payment_direction?: string | null;
+      }[],
+      categoryTypeById
+    ),
+    contactPaysMeCategoryIds
+  );
+}
+
+export type NextMonthForecast = {
+  monthLabel: string;
+  receitaPrevista: number;
+  despesaMedia3m: number;
+  resultadoPrevisto: number;
+  incomeSource: "distribution" | "historical_avg";
+};
+
+/**
+ * Estimativa para o próximo mês civil: receita (modo da distribuição ou média 3m)
+ * menos média das despesas operacionais dos 3 meses anteriores ao mês corrente.
+ */
+export async function computeNextMonthForecast(
+  supabase: SupabaseClient,
+  orgId: string,
+  anchorDate: Date
+): Promise<NextMonthForecast> {
+  const nextMonth = startOfMonth(addMonths(anchorDate, 1));
+  const monthLabel = format(nextMonth, "MMMM yyyy", { locale: ptBR });
+
+  const active = await getActiveDistribution(supabase, orgId, nextMonth);
+  let receitaPrevista: number;
+  let incomeSource: NextMonthForecast["incomeSource"] = "historical_avg";
+
+  if (active) {
+    receitaPrevista = await getBaseIncome(supabase, orgId, nextMonth, active.distribution);
+    incomeSource = "distribution";
+  } else {
+    receitaPrevista = await getAvgIncome(supabase, orgId, startOfMonth(anchorDate), 3);
+  }
+
+  const curStart = startOfMonth(anchorDate);
+  let sumDesp = 0;
+  for (let i = 1; i <= 3; i++) {
+    sumDesp += await totalDespesasOperacionaisMonth(supabase, orgId, subMonths(curStart, i));
+  }
+  const despesaMedia3m = sumDesp / 3;
+
+  return {
+    monthLabel,
+    receitaPrevista,
+    despesaMedia3m,
+    resultadoPrevisto: receitaPrevista - despesaMedia3m,
+    incomeSource,
   };
 }

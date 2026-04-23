@@ -3,7 +3,11 @@ import { redirect } from "next/navigation";
 import { differenceInCalendarDays, endOfMonth, startOfMonth, subDays } from "date-fns";
 import { DashboardClient } from "./_components/dashboard-client";
 import { SetupWizard } from "./_components/setup-wizard";
-import { computeMonthlyMetrics } from "@/lib/distribution/metrics";
+import {
+  computeMonthlyMetrics,
+  computeNextMonthForecast,
+  type NextMonthForecast,
+} from "@/lib/distribution/metrics";
 import { getGoals } from "@/app/actions/goals";
 import { getSetupData } from "@/app/actions/complete-setup";
 import { isRetroactiveInstallmentBackfill } from "@/lib/transactions/retroactive";
@@ -368,6 +372,13 @@ export default async function DashboardPage({
 
   const goals = await getGoals();
 
+  let nextMonthForecast: NextMonthForecast | null = null;
+  try {
+    nextMonthForecast = await computeNextMonthForecast(supabase, orgId, now);
+  } catch (forecastError) {
+    console.error("Error computing next month forecast:", forecastError);
+  }
+
   const monthTxDespesas = monthTx.filter((t) => isDespesa(t, contactPaysMeCategoryIds));
   const pendingCount = monthTxDespesas.filter((t) => !t.bucket_id).length;
   const totalExpense = monthTxDespesas.reduce((s, t) => s + Math.abs(Number(t.amount)), 0);
@@ -407,6 +418,7 @@ export default async function DashboardPage({
         hasDistribution: (distCount ?? 0) > 0,
         goalCount: goals.length,
       }}
+      nextMonthForecast={nextMonthForecast}
     />
   );
 }
