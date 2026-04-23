@@ -7,14 +7,12 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   addMonths,
   endOfMonth,
-  format,
   getDaysInMonth,
   min as minDate,
   startOfMonth,
   subMonths,
   differenceInDays,
 } from "date-fns";
-import { ptBR } from "date-fns/locale";
 import type { MonthSnapshotBucketData } from "@/lib/types/database";
 import {
   attachCategoryType,
@@ -25,6 +23,13 @@ import {
 } from "@/lib/transactions/classification";
 
 const TOTAL_BPS = 10000;
+
+/** Status usados no previsto do próximo mês (inclui em aberto). */
+const FORECAST_TX_STATUSES = ["pending", "cleared", "reconciled"] as const;
+
+function finiteNumber(n: number, fallback = 0): number {
+  return Number.isFinite(n) ? n : fallback;
+}
 
 export type BaseIncomeMode = "current_month" | "avg_3m" | "avg_6m" | "planned_manual";
 
@@ -177,6 +182,105 @@ export async function getBaseIncome(
     return getAvgIncome(supabase, orgId, month, 6);
   }
   return getCurrentMonthIncome(supabase, orgId, month);
+}
+
+async function getCurrentMonthIncomeForecast(
+  supabase: SupabaseClient,
+  orgId: string,
+  month: Date
+): Promise<number> {
+  const { start, end } = monthRange(month);
+  const { contactPaysMeCategoryIds, categoryTypeById } = await getCategoryMetadata(supabase, orgId);
+
+  const { data } = await supabase
+    .from("transactions")
+    .select("amount, type, contact_id, category_id, contact_payment_direction")
+    .eq("org_id", orgId)
+    .neq("type", "transfer")
+    .in("status", [...FORECAST_TX_STATUSES])
+    .gte("date", start)
+    .lte("date", end)
+    .is("deleted_at", null);
+
+  return sumReceitas(
+    attachCategoryType(
+      (data ?? []) as {
+        type: string;
+        amount: number | string | null;
+        contact_id?: string | null;
+        category_id?: string | null;
+        contact_payment_direction?: string | null;
+      }[],
+      categoryTypeById
+    ),
+    contactPaysMeCategoryIds
+  );
+}
+
+async function getAvgIncomeForecast(
+  supabase: SupabaseClient,
+  orgId: string,
+  month: Date,
+  numMonths: number
+): Promise<number> {
+  const { start } = monthRange(subMonths(month, numMonths));
+  const { end } = monthRange(month);
+  const { contactPaysMeCategoryIds, categoryTypeById } = await getCategoryMetadata(supabase, orgId);
+
+  const { data } = await supabase
+    .from("transactions")
+    .select("date, amount, type, contact_id, category_id, contact_payment_direction")
+    .eq("org_id", orgId)
+    .neq("type", "transfer")
+    .in("status", [...FORECAST_TX_STATUSES])
+    .gte("date", start)
+    .lte("date", end)
+    .is("deleted_at", null);
+
+  const rows = attachCategoryType(
+    (data ?? []) as {
+      date: string;
+      amount: number | string | null;
+      type: string;
+      contact_id?: string | null;
+      category_id?: string | null;
+      contact_payment_direction?: string | null;
+    }[],
+    categoryTypeById
+  );
+  const byMonth: Record<string, number> = {};
+  rows.forEach((r) => {
+    const m = r.date.slice(0, 7);
+    if (!byMonth[m]) byMonth[m] = 0;
+    if (isReceita(r, contactPaysMeCategoryIds)) {
+      byMonth[m] += Math.abs(Number(r.amount));
+    }
+  });
+  const months = Object.keys(byMonth).length || 1;
+  const total = Object.values(byMonth).reduce((s, v) => s + v, 0);
+  return total / months;
+}
+
+async function getBaseIncomeForForecast(
+  supabase: SupabaseClient,
+  orgId: string,
+  month: Date,
+  distribution: DistributionRow
+): Promise<number> {
+  const mode = distribution.base_income_mode as BaseIncomeMode;
+  if (mode === "planned_manual" && distribution.planned_income != null) {
+    return Number(distribution.planned_income);
+  }
+  if (mode === "current_month") {
+    return getCurrentMonthIncomeForecast(supabase, orgId, month);
+  }
+  if (mode === "avg_3m") {
+    return getAvgIncomeForecast(supabase, orgId, month, 3);
+  }
+  if (mode === "avg_6m") {
+    return getAvgIncomeForecast(supabase, orgId, month, 6);
+  }
+  return getCurrentMonthIncomeForecast(supabase, orgId, month);
 }
 
 /**
@@ -350,7 +454,8 @@ export async function computeMonthlyMetrics(
   };
 }
 
-async function totalDespesasOperacionaisMonth(
+/** Despesas para média do previsto (inclui pending = compromissos em aberto). */
+async function totalDespesasOperacionaisMonthForecast(
   supabase: SupabaseClient,
   orgId: string,
   month: Date
@@ -362,7 +467,7 @@ async function totalDespesasOperacionaisMonth(
     .select("amount, type, contact_id, category_id, contact_payment_direction")
     .eq("org_id", orgId)
     .neq("type", "transfer")
-    .in("status", ["cleared", "reconciled"])
+    .in("status", [...FORECAST_TX_STATUSES])
     .gte("date", start)
     .lte("date", end)
     .is("deleted_at", null);
@@ -399,31 +504,35 @@ export async function computeNextMonthForecast(
   anchorDate: Date
 ): Promise<NextMonthForecast> {
   const nextMonth = startOfMonth(addMonths(anchorDate, 1));
-  const monthLabel = format(nextMonth, "MMMM yyyy", { locale: ptBR });
+  const monthLabel = new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric" }).format(nextMonth);
 
   const active = await getActiveDistribution(supabase, orgId, nextMonth);
   let receitaPrevista: number;
   let incomeSource: NextMonthForecast["incomeSource"] = "historical_avg";
 
   if (active) {
-    receitaPrevista = await getBaseIncome(supabase, orgId, nextMonth, active.distribution);
+    receitaPrevista = await getBaseIncomeForForecast(supabase, orgId, nextMonth, active.distribution);
     incomeSource = "distribution";
   } else {
-    receitaPrevista = await getAvgIncome(supabase, orgId, startOfMonth(anchorDate), 3);
+    receitaPrevista = await getAvgIncomeForecast(supabase, orgId, startOfMonth(anchorDate), 3);
   }
 
   const curStart = startOfMonth(anchorDate);
   let sumDesp = 0;
   for (let i = 1; i <= 3; i++) {
-    sumDesp += await totalDespesasOperacionaisMonth(supabase, orgId, subMonths(curStart, i));
+    sumDesp += await totalDespesasOperacionaisMonthForecast(supabase, orgId, subMonths(curStart, i));
   }
   const despesaMedia3m = sumDesp / 3;
+
+  receitaPrevista = finiteNumber(receitaPrevista);
+  const despesaMedia3mF = finiteNumber(despesaMedia3m);
+  const resultadoPrevisto = finiteNumber(receitaPrevista - despesaMedia3mF);
 
   return {
     monthLabel,
     receitaPrevista,
-    despesaMedia3m,
-    resultadoPrevisto: receitaPrevista - despesaMedia3m,
+    despesaMedia3m: despesaMedia3mF,
+    resultadoPrevisto,
     incomeSource,
   };
 }

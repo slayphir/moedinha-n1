@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
-import { differenceInCalendarDays, endOfMonth, startOfMonth, subDays } from "date-fns";
+import { addMonths, differenceInCalendarDays, endOfMonth, startOfMonth, subDays } from "date-fns";
 import { DashboardClient } from "./_components/dashboard-client";
 import { SetupWizard } from "./_components/setup-wizard";
 import {
@@ -372,11 +372,19 @@ export default async function DashboardPage({
 
   const goals = await getGoals();
 
-  let nextMonthForecast: NextMonthForecast | null = null;
+  let nextMonthForecast: NextMonthForecast;
   try {
     nextMonthForecast = await computeNextMonthForecast(supabase, orgId, now);
   } catch (forecastError) {
     console.error("Error computing next month forecast:", forecastError);
+    const nm = startOfMonth(addMonths(now, 1));
+    nextMonthForecast = {
+      monthLabel: new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric" }).format(nm),
+      receitaPrevista: 0,
+      despesaMedia3m: 0,
+      resultadoPrevisto: 0,
+      incomeSource: "historical_avg",
+    };
   }
 
   const monthTxDespesas = monthTx.filter((t) => isDespesa(t, contactPaysMeCategoryIds));

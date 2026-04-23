@@ -108,7 +108,7 @@ type DashboardClientProps = {
     despesaMedia3m: number;
     resultadoPrevisto: number;
     incomeSource: "distribution" | "historical_avg";
-  } | null;
+  };
 };
 
 const CHART_COLORS = [
@@ -427,31 +427,25 @@ export function DashboardClient({
         <Card className="xl:col-span-2 animate-fade-in-up stagger-5">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-ink/80">Previsto próximo mês</CardTitle>
-            {nextMonthForecast ? (
-              <p className="text-[10px] font-normal capitalize leading-tight text-ink/60">
-                {nextMonthForecast.monthLabel}
-              </p>
-            ) : null}
+            <p className="text-[10px] font-normal capitalize leading-tight text-ink/60">
+              {nextMonthForecast.monthLabel}
+            </p>
           </CardHeader>
           <CardContent>
-            {nextMonthForecast ? (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between gap-2">
-                  <AnimatedNumber
-                    value={nextMonthForecast.resultadoPrevisto}
-                    className={`text-lg font-bold tabular-nums ${nextMonthForecast.resultadoPrevisto >= 0 ? "text-vault-700" : "text-destructive"}`}
-                  />
-                  <CalendarClock className="h-4 w-4 shrink-0 text-ink/45" />
-                </div>
-                <p className="text-[10px] leading-snug text-ink/55">
-                  Rec. {formatCurrency(nextMonthForecast.receitaPrevista)}
-                  {nextMonthForecast.incomeSource === "distribution" ? " (distrib.)" : " (méd. 3m)"} · Desp.{" "}
-                  {formatCurrency(nextMonthForecast.despesaMedia3m)} (méd. 3m)
-                </p>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <AnimatedNumber
+                  value={Number.isFinite(nextMonthForecast.resultadoPrevisto) ? nextMonthForecast.resultadoPrevisto : 0}
+                  className={`text-lg font-bold tabular-nums ${nextMonthForecast.resultadoPrevisto >= 0 ? "text-vault-700" : "text-destructive"}`}
+                />
+                <CalendarClock className="h-4 w-4 shrink-0 text-ink/45" />
               </div>
-            ) : (
-              <p className="text-xs text-ink/55">Indisponível no momento.</p>
-            )}
+              <p className="text-[10px] leading-snug text-ink/55">
+                Rec. {formatCurrency(nextMonthForecast.receitaPrevista)}
+                {nextMonthForecast.incomeSource === "distribution" ? " (distrib.)" : " (méd. 3m)"} · Desp.{" "}
+                {formatCurrency(nextMonthForecast.despesaMedia3m)} (méd. 3m)
+              </p>
+            </div>
           </CardContent>
         </Card>
         <Card className="xl:col-span-2 animate-fade-in-up stagger-6">
