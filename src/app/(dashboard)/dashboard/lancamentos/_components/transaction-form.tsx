@@ -22,7 +22,7 @@ import { ContactSelector } from "./contact-selector";
 import { useToast } from "@/components/ui/use-toast";
 import type { QuickTransactionDraft } from "@/lib/quick-launch";
 import { trackQuickValidationError } from "@/lib/quick-log-metrics";
-import { coerceStatusForFutureDate } from "@/lib/transactions/status";
+import { applyCreditCardFutureDuePending, coerceStatusForFutureDate } from "@/lib/transactions/status";
 
 type TxType = TransactionFormValues["type"];
 type Frequency = NonNullable<TransactionFormValues["frequency"]>;
@@ -722,8 +722,24 @@ export function TransactionForm({
           alignDateToDueDate: Boolean(account.is_credit_card) || account.type === "credit_card",
         });
 
+        let warnedInstallmentCardDue = false;
         rows = plan.map((installment) => {
           const rowPaid = installmentPaidOverrides[installment.index] ?? installment.defaultPaid;
+          const beforeStatus = rowPaid ? "cleared" : "pending";
+          const afterCardDue = applyCreditCardFutureDuePending(
+            beforeStatus,
+            effectiveType,
+            installment.dueDate,
+            account
+          );
+          if (
+            effectiveType === "expense" &&
+            selectedAccountIsCreditCard &&
+            beforeStatus === "cleared" &&
+            afterCardDue === "pending"
+          ) {
+            warnedInstallmentCardDue = true;
+          }
           const isRetroactivePaidInstallment = rowPaid && installment.date < currentMonthStartIso;
           return {
             ...basePayload,
@@ -733,14 +749,40 @@ export function TransactionForm({
               : `Parcela ${installment.index + 1}/${data.installments}`,
             date: installment.date,
             due_date: installment.dueDate,
-            status: coerceStatusForFutureDate(installment.date, rowPaid ? "cleared" : "pending"),
+            status: coerceStatusForFutureDate(installment.date, afterCardDue),
             installment_id: installmentId,
             metadata: isRetroactivePaidInstallment
               ? { exclude_from_cash_balance: true, reason: "retroactive_installment_backfill" }
               : null,
           };
         });
+        if (warnedInstallmentCardDue) {
+          toast({
+            title: "Vencimento da fatura no futuro",
+            description:
+              "Para cartão de crédito, parcelas com fatura ainda não vencida ficam em aberto. Confirme o pagamento na tela de Faturas.",
+          });
+        }
       } else {
+        const afterCardDue = applyCreditCardFutureDuePending(
+          rawStatus,
+          effectiveType,
+          resolvedDueDate,
+          account
+        );
+        if (
+          effectiveType === "expense" &&
+          selectedAccountIsCreditCard &&
+          data.isPaid &&
+          rawStatus === "cleared" &&
+          afterCardDue === "pending"
+        ) {
+          toast({
+            title: "Vencimento da fatura no futuro",
+            description:
+              "Para cartão de crédito, o lançamento fica em aberto até a data da fatura. Confirme o pagamento na tela de Faturas quando pagar.",
+          });
+        }
         rows = [
           {
             ...basePayload,
@@ -749,7 +791,7 @@ export function TransactionForm({
             date: data.date,
             due_date: resolvedDueDate,
             installment_id: null,
-            status: coerceStatusForFutureDate(data.date, rawStatus),
+            status: coerceStatusForFutureDate(data.date, afterCardDue),
           },
         ];
       }

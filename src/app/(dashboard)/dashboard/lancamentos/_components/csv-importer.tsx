@@ -25,7 +25,7 @@ import {
     type CsvImportFormat,
     type CsvTransactionType,
 } from "@/lib/csv-import";
-import { coerceStatusForFutureDate } from "@/lib/transactions/status";
+import { finalizeTransactionStatusForImportRow } from "@/lib/transactions/status";
 
 type ParsedType = CsvTransactionType;
 type ParsedStatus = "pending" | "cleared";
@@ -36,6 +36,8 @@ type AccountRow = {
     id: string;
     org_id: string;
     name: string;
+    type?: string | null;
+    is_credit_card?: boolean | null;
 };
 
 type CategoryRow = {
@@ -502,7 +504,13 @@ export function CSVImporter({ onSuccess }: { onSuccess?: () => void }) {
                             description: row.description,
                             amount: row.amount,
                             type: row.type,
-                            status: coerceStatusForFutureDate(row.date, row.status),
+                            status: finalizeTransactionStatusForImportRow(
+                                row.date,
+                                row.status,
+                                row.type,
+                                row.dueDate,
+                                sourceAccount
+                            ),
                             category_id: categoryId,
                             bucket_id: bucketId,
                             account_id: sourceAccount.id,

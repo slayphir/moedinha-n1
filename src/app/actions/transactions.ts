@@ -1,7 +1,10 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
-import { coerceStatusForFutureDate } from "@/lib/transactions/status";
+import {
+  applyCreditCardFutureDuePending,
+  coerceStatusForFutureDate,
+} from "@/lib/transactions/status";
 import type { TransactionType } from "@/lib/types/database";
 import { revalidatePath } from "next/cache";
 
@@ -32,6 +35,7 @@ type CreateInput = {
   transfer_account_id: string | null;
   category_id: string | null;
   description: string | null;
+  due_date?: string | null;
 };
 
 export type DeleteInput = {
@@ -163,12 +167,29 @@ export async function createTransaction(orgId: string, input: CreateInput) {
     resolvedBucketId = category.default_bucket_id ?? null;
   }
 
+  const { data: accRow } = await supabase
+    .from("accounts")
+    .select("type, is_credit_card")
+    .eq("org_id", orgId)
+    .eq("id", input.account_id)
+    .maybeSingle();
+
+  let statusBase: "pending" | "cleared" =
+    input.type === "expense" ? "pending" : "cleared";
+  statusBase = applyCreditCardFutureDuePending(
+    statusBase,
+    input.type,
+    input.due_date ?? null,
+    accRow ?? {}
+  );
+  const resolvedStatus = coerceStatusForFutureDate(input.date, statusBase);
+
   const { data, error } = await supabase
     .from("transactions")
     .insert({
       org_id: orgId,
       type: input.type,
-      status: coerceStatusForFutureDate(input.date, "cleared"),
+      status: resolvedStatus,
       amount: input.amount,
       currency: "BRL",
       account_id: input.account_id,
@@ -177,6 +198,7 @@ export async function createTransaction(orgId: string, input: CreateInput) {
       bucket_id: resolvedBucketId,
       description: input.description,
       date: input.date,
+      due_date: input.due_date ?? null,
       created_by: user.id,
     })
     .select("id")

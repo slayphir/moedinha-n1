@@ -126,8 +126,17 @@ NÃ£o Ã© necessÃ¡rio build command ou output custom; o Next.js Ã© detecta
 
 ### API (para sistema existente)
 
-- **POST /api/transactions** â€“ criar lanÃ§amento (body JSON com `org_id`, `type`, `amount`, `date`, `account_id`, etc.). Requer sessÃ£o Supabase (cookie).
+- **POST /api/transactions** â€“ criar lanÃ§amento (JSON: `org_id`, `type`, `amount`, `date`, `account_id`, opcional `due_date`, etc.). Despesa usa status inicial **pending** (cartÃ£o com `due_date` futura continua pending). Requer sessÃ£o Supabase (cookie).
 - **GET /api/kpis?org_id=UUID** â€“ retorna `saldo_orbita`, `receitas_mes`, `despesas_mes`, `resultado_mes`. Requer sessÃ£o e que o usuÃ¡rio seja membro da org.
+
+### API do agente (IA / automações)
+
+- Base: **`/api/agent/v1`**. Descoberta: **GET `/api/agent/v1`** (lista endpoints).
+- Auth: **`Authorization: Bearer <token>`** ou header **`X-Agent-Token`** — use o mesmo valor guardado em **`api_tokens.token_hash`** (como no embed). A org é inferida do token (não envie `org_id` no body).
+- No servidor Next é obrigatório **`SUPABASE_SERVICE_ROLE_KEY`** para validar o token; sem ela as rotas respondem 503.
+- **GET** `summary`, `accounts`, `categories`, `contacts`, `tags` — dados para o agente consultar.
+- **GET** `transactions` — query opcional: `date_from`, `date_to`, `limit`, `type`, `account_id`.
+- **POST** `transactions` — criar lançamento (JSON: `type`, `amount`, `date`, `account_id`; transferência exige `transfer_account_id`; opcionais: `category_id`, `description`, `due_date`, `contact_id`, `contact_payment_direction`, `tag_names`, `status`). Sem `status`, despesa **pending**, receita/transferência **cleared** (regras de cartão/fatura aplicam como na UI).
 
 Webhooks (transaction.created, budget.alert, etc.) podem ser implementados via Supabase Database Webhooks ou Edge Functions.
 
@@ -147,6 +156,7 @@ src/
     api/
       transactions/       # POST criar
       kpis/               # GET KPIs
+      agent/v1/           # API Bearer (IA): summary, accounts, transactions, ...
   components/
     ui/                   # shadcn-style
     dashboard/

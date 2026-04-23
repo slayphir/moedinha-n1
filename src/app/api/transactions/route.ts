@@ -1,5 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
-import { coerceStatusForFutureDate } from "@/lib/transactions/status";
+import {
+  applyCreditCardFutureDuePending,
+  coerceStatusForFutureDate,
+} from "@/lib/transactions/status";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -12,6 +15,7 @@ const createSchema = z.object({
   transfer_account_id: z.string().uuid().optional().nullable(),
   category_id: z.string().uuid().optional().nullable(),
   description: z.string().optional().nullable(),
+  due_date: z.string().optional().nullable(),
 });
 
 export async function POST(request: NextRequest) {
@@ -54,11 +58,28 @@ export async function POST(request: NextRequest) {
       bucketId = category.default_bucket_id ?? null;
     }
 
+    const { data: accRow } = await supabase
+      .from("accounts")
+      .select("type, is_credit_card")
+      .eq("org_id", parsed.data.org_id)
+      .eq("id", parsed.data.account_id)
+      .maybeSingle();
+
+    let statusBase: "pending" | "cleared" =
+      parsed.data.type === "expense" ? "pending" : "cleared";
+    statusBase = applyCreditCardFutureDuePending(
+      statusBase,
+      parsed.data.type,
+      parsed.data.due_date ?? null,
+      accRow ?? {}
+    );
+    const resolvedStatus = coerceStatusForFutureDate(parsed.data.date, statusBase);
+
     const { data, error } = await supabase
       .from("transactions")
       .insert({
         ...parsed.data,
-        status: coerceStatusForFutureDate(parsed.data.date, "cleared"),
+        status: resolvedStatus,
         currency: "BRL",
         bucket_id: bucketId,
         created_by: user.id,
