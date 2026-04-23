@@ -124,6 +124,9 @@ function CategoryDonutChart({ data, onCategoryClick }: { data: CategorySpend[]; 
                     <PieIcon className="h-5 w-5" />
                     Participação
                 </CardTitle>
+                <p className="text-sm text-muted-foreground font-normal">
+                    Percentual de cada categoria nas <strong>despesas</strong> do período.
+                </p>
             </CardHeader>
             <CardContent>
                 <div className="h-[320px]">
@@ -262,7 +265,8 @@ function BucketUsageChart({ data }: { data: ReportMetrics["bucketUsage"] }) {
 }
 
 function WaterfallChart({ data }: { data: ReportMetrics["waterfall"] }) {
-    // Waterfall: compute cumulative for positioning
+    // Cascata: primeira barra = receita (sobe); seguintes = despesas (descem); última = sobra.
+    // start = posição cumulativa antes do item; value = valor com sinal (negativo = barra para baixo).
     let running = 0;
     const chartData = data.map((item) => {
         const start = running;
@@ -270,8 +274,8 @@ function WaterfallChart({ data }: { data: ReportMetrics["waterfall"] }) {
         return {
             name: item.label,
             label: item.label,
-            value: Math.abs(item.value),
-            start: item.type === "balance" ? 0 : Math.min(start, running),
+            start,
+            value: item.value,
             displayValue: item.value,
             fill:
                 item.type === "income"
@@ -282,6 +286,14 @@ function WaterfallChart({ data }: { data: ReportMetrics["waterfall"] }) {
         };
     });
 
+    const allValues = chartData.flatMap((d) => [d.start, d.start + d.value]);
+    const minVal = Math.min(...allValues, 0);
+    const maxVal = Math.max(...allValues, 0);
+    const span = maxVal - minVal || 1;
+    const padding = Math.max(span * 0.05, 50);
+    const domainMin = minVal - padding;
+    const domainMax = maxVal + padding;
+
     return (
         <Card>
             <CardHeader>
@@ -289,22 +301,39 @@ function WaterfallChart({ data }: { data: ReportMetrics["waterfall"] }) {
                     <Flame className="h-5 w-5" />
                     Fluxo (Cascata)
                 </CardTitle>
+                <p className="text-xs text-muted-foreground">
+                    Receita sobe; cada categoria desce do total; Sobra = restante.
+                </p>
             </CardHeader>
             <CardContent>
                 <div className="h-[280px]">
                     <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={chartData}>
+                        <BarChart data={chartData} margin={{ top: 8, right: 8, left: 56, bottom: 8 }}>
                             <CartesianGrid strokeDasharray="3 3" />
                             <XAxis dataKey="label" tick={{ fontSize: 10 }} />
-                            <YAxis tickFormatter={(v) => formatCurrency(v)} />
+                            <YAxis
+                                type="number"
+                                domain={[domainMin, domainMax]}
+                                tickCount={5}
+                                tickFormatter={(v) => formatCurrency(v)}
+                                allowDataOverflow={false}
+                            />
                             <Tooltip
-                                formatter={(value: number, name: string) => {
-                                    if (name === "start") return [null, null];
-                                    return [formatCurrency(value), "Valor"];
+                                formatter={(value, name, item) => {
+                                    // "start" é uma barra transparente só para posicionar a cascata
+                                    if (name === "start") return ["", ""];
+                                    const payload = (item as { payload?: { displayValue?: number } } | undefined)?.payload;
+                                    const displayValue =
+                                        typeof payload?.displayValue === "number"
+                                            ? payload.displayValue
+                                            : typeof value === "number"
+                                                ? value
+                                                : Number(value);
+                                    return [formatCurrency(displayValue), "Valor"];
                                 }}
                             />
-                            <Bar dataKey="start" stackId="waterfall" fill="transparent" />
-                            <Bar dataKey="value" stackId="waterfall" radius={[4, 4, 0, 0]}>
+                            <Bar dataKey="start" stackId="waterfall" fill="transparent" isAnimationActive={false} />
+                            <Bar dataKey="value" stackId="waterfall" radius={[4, 4, 0, 0]} isAnimationActive={false}>
                                 {chartData.map((entry, i) => (
                                     <Cell key={i} fill={entry.fill} />
                                 ))}

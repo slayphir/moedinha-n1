@@ -22,6 +22,7 @@ import { ContactSelector } from "./contact-selector";
 import { useToast } from "@/components/ui/use-toast";
 import type { QuickTransactionDraft } from "@/lib/quick-launch";
 import { trackQuickValidationError } from "@/lib/quick-log-metrics";
+import { coerceStatusForFutureDate } from "@/lib/transactions/status";
 
 type TxType = TransactionFormValues["type"];
 type Frequency = NonNullable<TransactionFormValues["frequency"]>;
@@ -36,6 +37,7 @@ interface TransactionInsert {
   category_id: string | null;
   bucket_id?: string | null;
   contact_id?: string | null;
+  contact_payment_direction?: "paid_by_me" | "paid_to_me" | null;
   description: string | null;
   date: string;
   due_date?: string | null;
@@ -118,6 +120,7 @@ const defaultValues: TransactionFormValues = {
   fineAmount: 0,
   transferAccountId: null,
   contactId: null,
+  contactPaymentDirection: null as "paid_by_me" | "paid_to_me" | null,
   payPastInstallments: false,
   installmentInputType: "total",
 };
@@ -675,29 +678,32 @@ export function TransactionForm({
       const account = accounts.find((item) => item.id === data.accountId);
       if (!account) throw new Error("Conta de origem invalida");
 
-      const status = data.isPaid ? "cleared" : "pending";
+      // Com contato: usar opção do lançamento "Ela me pagou" (receita) ou "Eu paguei por ela" (despesa); senão fallback na categoria
+      const effectiveType: TxType = data.type;
+
+      const rawStatus = data.isPaid ? "cleared" : "pending";
       const description = data.description?.trim() || null;
       const resolvedDueDate =
-        data.type !== "expense"
+        effectiveType !== "expense"
           ? null
           : selectedAccountIsCreditCard
             ? normalizeCreditCardDueDate(data.date, data.dueDate ?? null, account.closing_day, account.due_day)
             : data.dueDate ?? null;
-      const resolvedCategoryId = data.type === "transfer" ? null : data.categoryId ?? null;
+      const resolvedCategoryId = effectiveType === "transfer" ? null : data.categoryId ?? null;
       const resolvedBucketId =
-        data.type === "transfer"
+        effectiveType === "transfer"
           ? null
           : categories.find((category) => category.id === resolvedCategoryId)?.default_bucket_id ?? null;
 
-      const basePayload: Omit<TransactionInsert, "amount" | "description" | "date"> = {
+      const basePayload: Omit<TransactionInsert, "amount" | "description" | "date" | "status"> = {
         org_id: account.org_id,
-        type: data.type,
-        status,
+        type: effectiveType,
         account_id: data.accountId,
-        transfer_account_id: data.type === "transfer" ? data.transferAccountId ?? null : null,
+        transfer_account_id: effectiveType === "transfer" ? data.transferAccountId ?? null : null,
         category_id: resolvedCategoryId,
         bucket_id: resolvedBucketId,
         contact_id: data.contactId ?? null,
+        contact_payment_direction: data.contactId ? (data.contactPaymentDirection ?? null) : null,
         created_by: user.id,
       };
 
@@ -705,7 +711,7 @@ export function TransactionForm({
       const nowLocal = new Date();
       const currentMonthStartIso = toISODateLocal(new Date(nowLocal.getFullYear(), nowLocal.getMonth(), 1));
 
-      if (data.type === "expense" && data.isInstallment && data.installments && data.installments > 1) {
+      if (effectiveType === "expense" && data.isInstallment && data.installments && data.installments > 1) {
         const installmentId = createUuidV4();
         const plan = buildInstallmentPreview({
           amount: data.amount,
@@ -727,7 +733,7 @@ export function TransactionForm({
               : `Parcela ${installment.index + 1}/${data.installments}`,
             date: installment.date,
             due_date: installment.dueDate,
-            status: rowPaid ? "cleared" : "pending",
+            status: coerceStatusForFutureDate(installment.date, rowPaid ? "cleared" : "pending"),
             installment_id: installmentId,
             metadata: isRetroactivePaidInstallment
               ? { exclude_from_cash_balance: true, reason: "retroactive_installment_backfill" }
@@ -743,6 +749,7 @@ export function TransactionForm({
             date: data.date,
             due_date: resolvedDueDate,
             installment_id: null,
+            status: coerceStatusForFutureDate(data.date, rawStatus),
           },
         ];
       }
@@ -972,6 +979,7 @@ export function TransactionForm({
                 const nextType = asType(value);
                 setValue("type", nextType, { shouldValidate: true });
                 setCategoryManuallyTouched(false);
+                setValue("categoryId", null);
                 if (nextType !== "transfer") setValue("transferAccountId", null);
               }}
               className="w-full"
@@ -1148,6 +1156,33 @@ export function TransactionForm({
           </div>
         )}
 
+        {type === "income" && (
+          <div className="space-y-2">
+            <Label>Contato (quem te pagou)</Label>
+            <ContactSelector
+              value={watch("contactId")}
+              onChange={(id) => {
+                setValue("contactId", id);
+                if (!id) setValue("contactPaymentDirection", null); else if (!watch("contactPaymentDirection")) setValue("contactPaymentDirection", "paid_to_me");
+              }}
+            />
+            {watch("contactId") && (
+              <div className="space-y-1.5 rounded-md border border-stroke bg-muted/30 p-2">
+                <Label className="text-xs">Com este contato</Label>
+                <Tabs
+                  value={watch("contactPaymentDirection") ?? "paid_to_me"}
+                  onValueChange={(v) => setValue("contactPaymentDirection", v === "paid_to_me" ? "paid_to_me" : "paid_by_me")}
+                >
+                  <TabsList className="grid w-full grid-cols-2">
+                    <TabsTrigger value="paid_to_me">Ela me pagou</TabsTrigger>
+                    <TabsTrigger value="paid_by_me">Eu paguei por ela</TabsTrigger>
+                  </TabsList>
+                </Tabs>
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="space-y-2">
           <Label>Atalhos rapidos</Label>
           <div className="flex flex-wrap gap-2">
@@ -1273,9 +1308,29 @@ export function TransactionForm({
                   <Input placeholder="Ex: Curso Tecnico" {...register("description")} />
                 </div>
 
-                <div className="space-y-1">
+                <div className="space-y-2">
                   <Label className="text-xs uppercase tracking-wide text-muted-foreground">Contato (opcional)</Label>
-                  <ContactSelector value={watch("contactId")} onChange={(id) => setValue("contactId", id)} />
+                  <ContactSelector
+                    value={watch("contactId")}
+                    onChange={(id) => {
+                      setValue("contactId", id);
+                      if (!id) setValue("contactPaymentDirection", null); else if (!watch("contactPaymentDirection")) setValue("contactPaymentDirection", "paid_by_me");
+                    }}
+                  />
+                  {watch("contactId") && (
+                    <div className="space-y-1.5 rounded-md border border-stroke bg-muted/30 p-2">
+                      <Label className="text-xs">Com este contato</Label>
+                      <Tabs
+                        value={watch("contactPaymentDirection") ?? "paid_by_me"}
+                        onValueChange={(v) => setValue("contactPaymentDirection", v === "paid_to_me" ? "paid_to_me" : "paid_by_me")}
+                      >
+                        <TabsList className="grid w-full grid-cols-2">
+                          <TabsTrigger value="paid_by_me">Eu paguei por ela</TabsTrigger>
+                          <TabsTrigger value="paid_to_me">Ela me pagou</TabsTrigger>
+                        </TabsList>
+                      </Tabs>
+                    </div>
+                  )}
                 </div>
 
                 <div className="space-y-1">
@@ -1445,7 +1500,27 @@ export function TransactionForm({
 
             <div className="space-y-2">
               <Label>Contato (opcional)</Label>
-              <ContactSelector value={watch("contactId")} onChange={(id) => setValue("contactId", id)} />
+              <ContactSelector
+                value={watch("contactId")}
+                onChange={(id) => {
+                  setValue("contactId", id);
+                  if (!id) setValue("contactPaymentDirection", null); else if (!watch("contactPaymentDirection")) setValue("contactPaymentDirection", type === "income" ? "paid_to_me" : "paid_by_me");
+                }}
+              />
+              {watch("contactId") && (
+                <div className="space-y-1.5 rounded-md border border-stroke bg-muted/30 p-2">
+                  <Label className="text-xs">Com este contato</Label>
+                  <Tabs
+                    value={watch("contactPaymentDirection") ?? (type === "income" ? "paid_to_me" : "paid_by_me")}
+                    onValueChange={(v) => setValue("contactPaymentDirection", v === "paid_to_me" ? "paid_to_me" : "paid_by_me")}
+                  >
+                    <TabsList className="grid w-full grid-cols-2">
+                      <TabsTrigger value="paid_by_me">Eu paguei por ela</TabsTrigger>
+                      <TabsTrigger value="paid_to_me">Ela me pagou</TabsTrigger>
+                    </TabsList>
+                  </Tabs>
+                </div>
+              )}
             </div>
 
             <div className="space-y-2">

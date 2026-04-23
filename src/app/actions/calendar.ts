@@ -26,10 +26,10 @@ export type CalendarDayData = {
 export async function getMonthFinancialEvents(year: number, month: number) {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return { error: "NÃ£o autorizado" };
+    if (!user) return { error: "Não autorizado" };
 
     const orgId = await getActiveOrgIdForUser(supabase, user.id);
-    if (!orgId) return { error: "OrganizaÃ§Ã£o nÃ£o encontrada" };
+    if (!orgId) return { error: "Organização não encontrada" };
 
     // Create date range for the view
     // Month is 0-indexed in JS Date? User likely passes 1-indexed or 0-indexed?

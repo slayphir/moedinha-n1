@@ -8,6 +8,8 @@ export type Contact = {
     phone?: string;
     email?: string;
     relationship?: string;
+    /** Nível de confiabilidade no pagamento: on_time | sometimes_late | often_late | stopped_paying | unknown */
+    payment_reliability?: string | null;
 };
 
 export function useFinancialData() {

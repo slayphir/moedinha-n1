@@ -29,6 +29,14 @@ function normalizeSearch(value: string | string[] | undefined) {
   return value.trim();
 }
 
+function normalizeContactId(
+  value: string | string[] | undefined,
+  validIds: Set<string>
+): string {
+  if (typeof value !== "string") return "";
+  return validIds.has(value) ? value : "";
+}
+
 function normalizeMonth(value: string | string[] | undefined) {
   if (typeof value !== "string") return "";
   const trimmed = value.trim();
@@ -88,6 +96,15 @@ export default async function LancamentosPage({
   const accountIdSet = new Set(accountOptions.map((account) => account.id));
   const selectedAccountId = accountIdSet.has(rawSelectedAccountId) ? rawSelectedAccountId : "";
 
+  const { data: contactRows } = await supabase
+    .from("contacts")
+    .select("id, name")
+    .eq("org_id", orgId)
+    .order("name");
+  const contactOptions = (contactRows ?? []) as { id: string; name: string }[];
+  const contactIdSet = new Set(contactOptions.map((c) => c.id));
+  const selectedContactId = normalizeContactId(searchParams?.contact, contactIdSet);
+
   let filteredAccountIds: string[] | null = null;
   if (selectedAccountId) {
     filteredAccountIds = [selectedAccountId];
@@ -119,6 +136,9 @@ export default async function LancamentosPage({
     if (monthRange) {
       countQuery = countQuery.gte("date", monthRange.start).lte("date", monthRange.end);
     }
+    if (selectedContactId) {
+      countQuery = countQuery.eq("contact_id", selectedContactId);
+    }
 
     const countResult = await countQuery;
     count = countResult.count ?? 0;
@@ -141,6 +161,7 @@ export default async function LancamentosPage({
     created_at: string;
     account: { id: string; name: string } | { id: string; name: string }[] | null;
     category: { id: string; name: string } | { id: string; name: string }[] | null;
+    contact: { id: string; name: string } | { id: string; name: string }[] | null;
   }[] | null = [];
 
   if (!forceEmptyResult) {
@@ -149,7 +170,8 @@ export default async function LancamentosPage({
       .select(`
         id, type, status, amount, date, due_date, installment_id, description, created_at, bucket_id,
         account:accounts!transactions_account_id_fkey(id, name),
-        category:categories(id, name)
+        category:categories(id, name),
+        contact:contacts(id, name)
       `)
       .eq("org_id", orgId)
       .is("deleted_at", null)
@@ -167,6 +189,9 @@ export default async function LancamentosPage({
     if (monthRange) {
       txQuery = txQuery.gte("date", monthRange.start).lte("date", monthRange.end);
     }
+    if (selectedContactId) {
+      txQuery = txQuery.eq("contact_id", selectedContactId);
+    }
 
     const txResult = await txQuery.range(from, to);
     transactions = txResult.data;
@@ -179,6 +204,8 @@ export default async function LancamentosPage({
   const rows: LancamentoRow[] = (transactions ?? []).map((t) => {
     const acc = Array.isArray(t.account) ? t.account[0] ?? null : t.account ?? null;
     const cat = Array.isArray(t.category) ? t.category[0] ?? null : t.category ?? null;
+    const rawContact = (t as { contact?: { id: string; name: string } | { id: string; name: string }[] | null }).contact;
+    const contact = Array.isArray(rawContact) ? rawContact[0] ?? null : rawContact ?? null;
     return {
       id: t.id,
       type: t.type,
@@ -191,6 +218,7 @@ export default async function LancamentosPage({
       created_at: t.created_at,
       account: acc as LancamentoRow["account"],
       category: cat as LancamentoRow["category"],
+      contact: contact as LancamentoRow["contact"],
     };
   });
 
@@ -208,6 +236,8 @@ export default async function LancamentosPage({
       }))}
       selectedAccountType={selectedAccountType}
       selectedAccountId={selectedAccountId}
+      contactOptions={contactOptions}
+      selectedContactId={selectedContactId}
       searchTerm={searchTerm}
       selectedMonth={selectedMonth}
     />

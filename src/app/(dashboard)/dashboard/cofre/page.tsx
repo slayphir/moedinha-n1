@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { startOfMonth, endOfMonth, subDays } from "date-fns";
 import { buildGamification, type GamificationTx } from "@/lib/gamification";
+import { attachCategoryType, sumReceitas, sumDespesas } from "@/lib/transactions/classification";
 import { CofreClient } from "./cofre-client";
 
 export default async function CofrePage() {
@@ -24,20 +25,30 @@ export default async function CofrePage() {
   const monthEnd = endOfMonth(now);
   const ninetyDaysAgo = subDays(now, 90);
 
+  const { data: categoryRows } = await supabase
+    .from("categories")
+    .select("id, type, is_creditor_center")
+    .eq("org_id", orgId);
+  const contactPaysMeCategoryIds = new Set((categoryRows ?? []).filter((c) => c.is_creditor_center).map((c) => c.id));
+  const categoryTypeById = new Map((categoryRows ?? []).map((c) => [c.id, c.type]));
+
   const { data: txList } = await supabase
     .from("transactions")
-    .select("id, amount, date, type, category_id, deleted_at")
+    .select("id, amount, date, type, category_id, contact_id, contact_payment_direction, deleted_at")
     .eq("org_id", orgId)
     .is("deleted_at", null)
     .gte("date", ninetyDaysAgo.toISOString().slice(0, 10))
     .order("date", { ascending: true });
 
-  const tx = (txList ?? []).filter((t) => !t.deleted_at);
+  const tx = attachCategoryType(
+    (txList ?? []).filter((t) => !t.deleted_at),
+    categoryTypeById
+  );
   const monthTx = tx.filter(
     (t) => t.date >= monthStart.toISOString().slice(0, 10) && t.date <= monthEnd.toISOString().slice(0, 10)
   );
-  const receitasMes = monthTx.filter((t) => t.type === "income").reduce((s, t) => s + Number(t.amount), 0);
-  const despesasMes = monthTx.filter((t) => t.type === "expense").reduce((s, t) => s + Math.abs(Number(t.amount)), 0);
+  const receitasMes = sumReceitas(monthTx, contactPaysMeCategoryIds);
+  const despesasMes = sumDespesas(monthTx, contactPaysMeCategoryIds);
 
   const gamificationTx: GamificationTx[] = tx.map((item) => ({
     date: item.date,

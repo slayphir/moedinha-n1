@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { coerceStatusForFutureDate } from "@/lib/transactions/status";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -57,7 +58,7 @@ export async function POST(request: NextRequest) {
       .from("transactions")
       .insert({
         ...parsed.data,
-        status: "cleared",
+        status: coerceStatusForFutureDate(parsed.data.date, "cleared"),
         currency: "BRL",
         bucket_id: bucketId,
         created_by: user.id,

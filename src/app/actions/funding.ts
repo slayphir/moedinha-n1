@@ -2,14 +2,17 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
+import { startOfMonth, endOfMonth } from "date-fns";
+import { attachCategoryType, sumReceitas } from "@/lib/transactions/classification";
 
 /**
  * Checks for recent income and calculates pending funding based on distribution rules.
+ * Usa a mesma regra de receitas do dashboard: o card segue o `type` do lancamento
+ * e ignora dados historicos inconsistentes com categoria de despesa.
  */
 export async function getPendingFunding(orgId: string) {
     const supabase = await createClient();
 
-    // 1. Get active distribution
     const { data: distribution } = await supabase
         .from("distributions")
         .select("*, buckets:distribution_buckets(*)")
@@ -19,30 +22,42 @@ export async function getPendingFunding(orgId: string) {
 
     if (!distribution) return { totalIncome: 0, fundingPlan: [] };
 
-    // 2. Get Income from current month (or last 30 days) that has NOT been funded
-    // We need a way to mark transactions as "funded".
-    // For now, let's use a simple approach:
-    // Sum all income in current month.
-    // Sum all "Goal Funding" transfers in current month.
-    // Pending = (Income * Goal%) - Funded.
+    const now = new Date();
+    const monthStart = startOfMonth(now);
+    const monthEnd = endOfMonth(now);
+    const startIso = monthStart.toISOString().slice(0, 10);
+    const endIso = monthEnd.toISOString().slice(0, 10);
 
-    // Let's refine: We will look for "Income" transactions.
-    // And we will look for "Transfer" transactions where category = 'Financial Goals' (or similar).
+    const { data: categoryRows } = await supabase
+        .from("categories")
+        .select("id, type, is_creditor_center")
+        .eq("org_id", orgId);
+    const contactPaysMeCategoryIds = new Set((categoryRows ?? []).filter((c) => c.is_creditor_center).map((c) => c.id));
+    const categoryTypeById = new Map((categoryRows ?? []).map((c) => [c.id, c.type]));
 
-    // Better approach for MVP:
-    // Just show the "Expected" funding based on "Month to Date" income.
-    const startOfMonth = new Date();
-    startOfMonth.setDate(1);
-    startOfMonth.setHours(0, 0, 0, 0);
-
-    const { data: incomeTx } = await supabase
+    const { data: monthTx } = await supabase
         .from("transactions")
-        .select("amount")
+        .select("amount, type, contact_id, category_id, contact_payment_direction")
         .eq("org_id", orgId)
-        .eq("type", "income")
-        .gte("date", startOfMonth.toISOString());
+        .is("deleted_at", null)
+        .neq("type", "transfer")
+        .in("status", ["cleared", "reconciled"])
+        .gte("date", startIso)
+        .lte("date", endIso);
 
-    const totalIncome = incomeTx?.reduce((sum, tx) => sum + tx.amount, 0) || 0;
+    const totalIncome = sumReceitas(
+        attachCategoryType(
+            (monthTx ?? []) as {
+                type: string;
+                amount: number | string | null;
+                contact_id?: string | null;
+                category_id?: string | null;
+                contact_payment_direction?: string | null;
+            }[],
+            categoryTypeById
+        ),
+        contactPaysMeCategoryIds
+    );
 
     // Calculate expected funding for each bucket
     const fundingPlan = distribution.buckets.map((bucket: { id: string; name: string; percent_bps: number; color?: string }) => ({

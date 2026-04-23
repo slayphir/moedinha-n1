@@ -11,12 +11,14 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Contact } from "@/hooks/use-financial-data";
+import { PAYMENT_RELIABILITY_VALUES } from "@/lib/payment-reliability";
 
 const schema = z.object({
     name: z.string().min(1, "Nome é obrigatório"),
     phone: z.string().optional().or(z.literal("")),
     email: z.string().email("Email inválido").optional().or(z.literal("")),
     relationship: z.string().optional(),
+    payment_reliability: z.string().optional(),
 });
 
 export function EditContactDialog({
@@ -35,7 +37,7 @@ export function EditContactDialog({
 
     const form = useForm<z.infer<typeof schema>>({
         resolver: zodResolver(schema),
-        defaultValues: { name: "", phone: "", email: "", relationship: "client" }
+        defaultValues: { name: "", phone: "", email: "", relationship: "client", payment_reliability: "unknown" }
     });
 
     useEffect(() => {
@@ -44,7 +46,8 @@ export function EditContactDialog({
                 name: contact.name,
                 phone: contact.phone || "",
                 email: contact.email || "",
-                relationship: contact.relationship || "client"
+                relationship: contact.relationship || "client",
+                payment_reliability: contact.payment_reliability || "unknown"
             });
         }
     }, [contact, form]);
@@ -60,6 +63,7 @@ export function EditContactDialog({
                     phone: data.phone || null,
                     email: data.email || null,
                     relationship: data.relationship || null,
+                    payment_reliability: data.payment_reliability || null,
                 })
                 .eq("id", contact.id);
 
@@ -111,6 +115,22 @@ export function EditContactDialog({
                                 <SelectItem value="family">Família</SelectItem>
                                 <SelectItem value="friend">Amigo</SelectItem>
                                 <SelectItem value="other">Outro</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <div className="space-y-2">
+                        <Label>Confiabilidade no pagamento</Label>
+                        <Select
+                            value={form.watch("payment_reliability") ?? "unknown"}
+                            onValueChange={(val) => form.setValue("payment_reliability", val)}
+                        >
+                            <SelectTrigger>
+                                <SelectValue placeholder="Selecione" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {PAYMENT_RELIABILITY_VALUES.map((o) => (
+                                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                                ))}
                             </SelectContent>
                         </Select>
                     </div>

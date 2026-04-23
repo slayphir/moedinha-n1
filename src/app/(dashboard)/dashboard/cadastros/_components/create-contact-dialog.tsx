@@ -10,12 +10,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { PAYMENT_RELIABILITY_VALUES } from "@/lib/payment-reliability";
 
 const schema = z.object({
     name: z.string().min(1, "Nome é obrigatório"),
     phone: z.string().optional(),
     email: z.string().email("Email inválido").optional().or(z.literal("")),
     relationship: z.string().optional(),
+    payment_reliability: z.string().optional(),
 });
 
 export function CreateContactDialog({ open, onOpenChange, onSuccess }: {
@@ -29,7 +31,7 @@ export function CreateContactDialog({ open, onOpenChange, onSuccess }: {
 
     const form = useForm<z.infer<typeof schema>>({
         resolver: zodResolver(schema),
-        defaultValues: { name: "", phone: "", email: "", relationship: "client" }
+        defaultValues: { name: "", phone: "", email: "", relationship: "client", payment_reliability: "unknown" }
     });
 
     async function onSubmit(data: z.infer<typeof schema>) {
@@ -49,6 +51,7 @@ export function CreateContactDialog({ open, onOpenChange, onSuccess }: {
                     phone: data.phone || null,
                     email: data.email || null,
                     relationship: data.relationship || null,
+                    payment_reliability: data.payment_reliability || null,
                     org_id: orgId
                 })
                 .select("id")
@@ -105,6 +108,23 @@ export function CreateContactDialog({ open, onOpenChange, onSuccess }: {
                                 <SelectItem value="other">Outro</SelectItem>
                             </SelectContent>
                         </Select>
+                    </div>
+                    <div className="space-y-2">
+                        <Label>Confiabilidade no pagamento</Label>
+                        <Select
+                            value={form.watch("payment_reliability") ?? "unknown"}
+                            onValueChange={(val) => form.setValue("payment_reliability", val)}
+                        >
+                            <SelectTrigger>
+                                <SelectValue placeholder="Selecione" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {PAYMENT_RELIABILITY_VALUES.map((o) => (
+                                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground">Paga em dia, atrasa ou deixou de pagar?</p>
                     </div>
 
                     <DialogFooter>

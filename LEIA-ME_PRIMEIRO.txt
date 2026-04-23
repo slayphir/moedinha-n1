@@ -1,0 +1,62 @@
+╔════════════════════════════════════════════════════════════════════╗
+║                                                                  ║
+║         💰 SISTEMA FINANCEIRO PESSOAL (MOEDINHA) 💰               ║
+║                                                                  ║
+╚════════════════════════════════════════════════════════════════════╝
+
+
+📋 COMO COMEÇAR (APP PRINCIPAL – NEXT.JS):
+═══════════════════════════════════════════════════════════════════
+
+1️⃣  INSTALE O NODE.JS (se ainda não tiver)
+    → Baixe em: https://nodejs.org (versão LTS)
+
+2️⃣  INSTALE E RODE O APP
+    → Abra o terminal na pasta do projeto (raiz) e execute:
+
+       npm install
+       npm run dev
+
+3️⃣  CONFIGURE O AMBIENTE
+    → Copie .env.example para .env.local na raiz
+    → Preencha NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY
+      (obtenha no painel do Supabase: Settings → API)
+
+4️⃣  ACESSE NO NAVEGADOR
+    → http://localhost:3000
+
+
+⚡ PRIMEIROS PASSOS NO APP:
+═══════════════════════════════════════════════════════════════════
+
+• Crie uma conta ou faça login
+• Crie uma organização (onboarding)
+• Cadastre contas e categorias
+• Adicione transações ou importe CSV
+• Use o dashboard, metas, relatórios e integração Telegram (opcional)
+
+
+📚 DOCUMENTAÇÃO:
+═══════════════════════════════════════════════════════════════════
+
+📄 README.md              → Visão geral e deploy
+📄 QUICK_START.md         → Guia rápido
+📄 MELHORIAS_PROJETO.md   → Relatório de revisão e melhorias
+
+
+🔐 SEGURANÇA:
+═══════════════════════════════════════════════════════════════════
+
+• Nunca faça commit do arquivo .env ou .env.local (eles contêm chaves).
+• No Vercel, use CRON_SECRET para proteger os endpoints de cron (ex.: Telegram).
+
+
+🆘 PROBLEMAS?
+═══════════════════════════════════════════════════════════════════
+
+• Erro de variáveis de ambiente → Verifique .env.local e .env.example
+• Build ou lint → Execute: npm run lint e npm run build em financeiro-lazy
+• Supabase → Confira no painel se as tabelas e RLS estão configuradas
+
+
+            Boa gestão financeira! 💰📊

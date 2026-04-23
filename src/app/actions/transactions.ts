@@ -1,8 +1,9 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
-import { revalidatePath } from "next/cache";
+import { coerceStatusForFutureDate } from "@/lib/transactions/status";
 import type { TransactionType } from "@/lib/types/database";
+import { revalidatePath } from "next/cache";
 
 export type UpdateScope = "single" | "forward" | "all";
 export type AmountMode = "installment" | "total";
@@ -16,6 +17,7 @@ export type UpdateInput = {
   category_id?: string | null;
   account_id?: string;
   contact_id?: string | null;
+  contact_payment_direction?: "paid_by_me" | "paid_to_me" | null;
   tags?: string[];
   scope?: UpdateScope;
   installment_id?: string | null;
@@ -166,7 +168,7 @@ export async function createTransaction(orgId: string, input: CreateInput) {
     .insert({
       org_id: orgId,
       type: input.type,
-      status: "cleared",
+      status: coerceStatusForFutureDate(input.date, "cleared"),
       amount: input.amount,
       currency: "BRL",
       account_id: input.account_id,
@@ -208,7 +210,7 @@ export async function updateTransaction(orgId: string, input: UpdateInput) {
 
   const { data: txMeta, error: txMetaError } = await supabase
     .from("transactions")
-    .select("id, type, installment_id")
+    .select("id, type, installment_id, contact_id, category_id, contact_payment_direction, amount")
     .eq("id", input.id)
     .eq("org_id", orgId)
     .is("deleted_at", null)
@@ -284,6 +286,7 @@ export async function updateTransaction(orgId: string, input: UpdateInput) {
     if (hasOwnField(input, "status")) patch.status = input.status;
     if (hasOwnField(input, "account_id")) patch.account_id = input.account_id;
     if (hasOwnField(input, "contact_id")) patch.contact_id = input.contact_id;
+    if (hasOwnField(input, "contact_payment_direction")) patch.contact_payment_direction = input.contact_payment_direction;
     if (hasOwnField(input, "category_id")) {
       patch.category_id = txMeta.type === "transfer" ? null : input.category_id ?? null;
       patch.bucket_id = resolvedBucketId ?? null;

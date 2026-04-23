@@ -31,6 +31,7 @@ export type LancamentoRow = {
   created_at: string;
   account?: { id: string; name: string } | null;
   category?: { id: string; name: string } | null;
+  contact?: { id: string; name: string } | null;
 };
 
 const helper = createColumnHelper<LancamentoRow>();
@@ -58,6 +59,11 @@ const columns = [
     id: "category",
     header: "Categoria",
     cell: (cell) => cell.row.original.category?.name ?? "-",
+  }),
+  helper.accessor((row) => row.contact?.name ?? "", {
+    id: "contact",
+    header: "Contato",
+    cell: (cell) => cell.row.original.contact?.name ?? "-",
   }),
   helper.accessor("amount", {
     header: "Valor",
@@ -116,6 +122,8 @@ type Props = {
   }>;
   selectedAccountType: "all" | "card" | "account";
   selectedAccountId: string;
+  contactOptions: Array<{ id: string; name: string }>;
+  selectedContactId: string;
   searchTerm: string;
   selectedMonth: string;
 };
@@ -129,6 +137,8 @@ export function LancamentosClient({
   accountOptions,
   selectedAccountType,
   selectedAccountId,
+  contactOptions,
+  selectedContactId,
   searchTerm,
   selectedMonth,
 }: Props) {
@@ -206,6 +216,17 @@ export function LancamentosClient({
         params.set("month", month);
       } else {
         params.delete("month");
+      }
+      params.set("page", "1");
+    });
+  };
+
+  const handleContactChange = (contactId: string) => {
+    updateQueryParams((params) => {
+      if (contactId) {
+        params.set("contact", contactId);
+      } else {
+        params.delete("contact");
       }
       params.set("page", "1");
     });
@@ -354,6 +375,19 @@ export function LancamentosClient({
                 Limpar mes
               </Button>
             )}
+            <select
+              value={selectedContactId}
+              onChange={(event) => handleContactChange(event.target.value)}
+              className="h-10 min-w-[160px] rounded-md border border-input bg-background px-3 text-sm"
+              aria-label="Filtrar por contato"
+            >
+              <option value="">Todos os contatos</option>
+              {contactOptions.map((contact) => (
+                <option key={contact.id} value={contact.id}>
+                  {contact.name}
+                </option>
+              ))}
+            </select>
             <CSVExporter />
             <CSVImporter onSuccess={() => router.refresh()} />
             <Button

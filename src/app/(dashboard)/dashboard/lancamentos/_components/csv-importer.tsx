@@ -18,8 +18,16 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+    detectCsvImportFormat,
+    inferCsvTransactionType,
+    normalizeCsvText,
+    type CsvImportFormat,
+    type CsvTransactionType,
+} from "@/lib/csv-import";
+import { coerceStatusForFutureDate } from "@/lib/transactions/status";
 
-type ParsedType = "income" | "expense" | "transfer";
+type ParsedType = CsvTransactionType;
 type ParsedStatus = "pending" | "cleared";
 
 type RawCSVRow = Record<string, string | undefined>;
@@ -109,7 +117,7 @@ const TEMPLATE_ROWS = [
 const FIELD_ALIASES = {
     date: ["date", "data"],
     dueDate: ["due_date", "due date", "vencimento", "data_vencimento"],
-    description: ["description", "descricao", "historico", "memo"],
+    description: ["description", "descricao", "historico", "memo", "title"],
     amount: ["amount", "valor", "value"],
     type: ["type", "tipo"],
     status: ["status", "situacao", "status_pagamento"],
@@ -127,11 +135,7 @@ const FIELD_ALIASES = {
 };
 
 function stripAccents(value: string): string {
-    return value
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .toLowerCase()
-        .trim();
+    return normalizeCsvText(value);
 }
 
 function getFieldValue(row: RawCSVRow, aliases: string[]): string {
@@ -185,16 +189,6 @@ function parseCsvDate(rawDate: string): string | null {
     return parsed.toISOString().slice(0, 10);
 }
 
-function parseType(rawType: string, amount: number): ParsedType {
-    const normalized = stripAccents(rawType);
-
-    if (["income", "receita", "entrada"].includes(normalized)) return "income";
-    if (["expense", "despesa", "saida"].includes(normalized)) return "expense";
-    if (["transfer", "transferencia"].includes(normalized)) return "transfer";
-
-    return amount < 0 ? "expense" : "income";
-}
-
 function parseStatus(rawStatus: string): ParsedStatus {
     const normalized = stripAccents(rawStatus);
     if (["pending", "pendente", "agendado", "a vencer"].includes(normalized)) return "pending";
@@ -232,6 +226,7 @@ export function CSVImporter({ onSuccess }: { onSuccess?: () => void }) {
     const [file, setFile] = useState<File | null>(null);
     const [preview, setPreview] = useState<ParsedCSVRow[]>([]);
     const [skippedRows, setSkippedRows] = useState(0);
+    const [detectedFormat, setDetectedFormat] = useState<CsvImportFormat | null>(null);
     const [loading, setLoading] = useState(false);
     const [defaultAccountId, setDefaultAccountId] = useState("");
     const [defaultCategoryId, setDefaultCategoryId] = useState("");
@@ -326,7 +321,10 @@ export function CSVImporter({ onSuccess }: { onSuccess?: () => void }) {
 
     const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
         const selectedFile = event.target.files?.[0];
-        if (!selectedFile) return;
+        if (!selectedFile) {
+            setDetectedFormat(null);
+            return;
+        }
         setFile(selectedFile);
         parseFile(selectedFile);
     };
@@ -335,9 +333,14 @@ export function CSVImporter({ onSuccess }: { onSuccess?: () => void }) {
         Papa.parse<RawCSVRow>(selectedFile, {
             header: true,
             skipEmptyLines: true,
+            encoding: "utf-8",
             complete: (results) => {
                 const parsedRows: ParsedCSVRow[] = [];
                 let skipped = 0;
+                const format = detectCsvImportFormat({
+                    fileName: selectedFile.name,
+                    fields: results.meta.fields,
+                });
 
                 for (const row of results.data) {
                     const rawDate = getFieldValue(row, FIELD_ALIASES.date);
@@ -359,7 +362,7 @@ export function CSVImporter({ onSuccess }: { onSuccess?: () => void }) {
                         continue;
                     }
 
-                    const type = parseType(rawType, amount);
+                    const type = inferCsvTransactionType(rawType, amount, format);
                     const dueDate = parseCsvDate(rawDueDate);
                     const status = parseStatus(rawStatus);
 
@@ -378,11 +381,13 @@ export function CSVImporter({ onSuccess }: { onSuccess?: () => void }) {
                     });
                 }
 
+                setDetectedFormat(format);
                 setPreview(parsedRows);
                 setSkippedRows(skipped);
             },
             error: (error) => {
                 console.error("CSV parse error:", error);
+                setDetectedFormat(null);
                 alert("Nao foi possivel ler o CSV.");
             },
         });
@@ -497,7 +502,7 @@ export function CSVImporter({ onSuccess }: { onSuccess?: () => void }) {
                             description: row.description,
                             amount: row.amount,
                             type: row.type,
-                            status: row.status,
+                            status: coerceStatusForFutureDate(row.date, row.status),
                             category_id: categoryId,
                             bucket_id: bucketId,
                             account_id: sourceAccount.id,
@@ -543,6 +548,7 @@ export function CSVImporter({ onSuccess }: { onSuccess?: () => void }) {
             setFile(null);
             setPreview([]);
             setSkippedRows(0);
+            setDetectedFormat(null);
             onSuccess?.();
             refetch();
         } catch (error) {
@@ -565,7 +571,7 @@ export function CSVImporter({ onSuccess }: { onSuccess?: () => void }) {
                 <DialogHeader>
                     <DialogTitle>Importar transacoes</DialogTitle>
                     <DialogDescription className="flex flex-wrap items-center gap-2">
-                        Use o modelo padrao para evitar falhas de coluna e formato.
+                        Use o modelo padrao ou um CSV do Nubank (`date,title,amount`).
                         <Button type="button" variant="link" className="h-auto p-0 text-xs" onClick={downloadTemplate}>
                             Baixar modelo CSV
                         </Button>
@@ -638,6 +644,12 @@ export function CSVImporter({ onSuccess }: { onSuccess?: () => void }) {
                     {preview.length > 0 && (
                         <div className="max-h-[220px] overflow-auto rounded-md border bg-muted/50 p-2 text-xs">
                             <p className="mb-2 font-bold">{preview.length} registros validos encontrados.</p>
+                            {detectedFormat === "nubank" && (
+                                <p className="mb-2 text-muted-foreground">
+                                    Formato Nubank detectado: `title` vira descricao, valores positivos entram como despesa
+                                    e negativos como entrada/estorno. Conta, categoria e tags podem ser classificadas depois.
+                                </p>
+                            )}
                             {skippedRows > 0 && (
                                 <p className="mb-2 text-amber-700">
                                     {skippedRows} linha(s) ignorada(s) por data/valor invalido.

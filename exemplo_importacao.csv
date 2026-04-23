@@ -1,0 +1,11 @@
+date,due_date,description,amount,type,status,account_name,transfer_account_name,category_name,contact_name,tags
+2026-03-05,,Salario empresa,5000.00,income,cleared,Conta Principal,,Salario,Empresa,fixo|trabalho
+2026-03-06,,Freelance landing page,1800.00,income,cleared,Conta Principal,,Freelance,Cliente XPTO,freelance|extra
+2026-03-07,2026-03-10,Mercado atacado,-420.50,expense,pending,Conta Principal,,Alimentacao,,mercado|essencial
+2026-03-08,2026-03-08,Conta de luz,-180.90,expense,cleared,Conta Principal,,Moradia,,casa|fixo
+2026-03-09,2026-03-09,Assinatura streaming,-45.90,expense,cleared,Conta Principal,,Lazer,,assinaturas
+2026-03-10,,Transferencia para reserva,800.00,transfer,cleared,Conta Principal,Conta Investimentos,,,reserva
+2026-03-11,2026-03-15,Consulta medica,-250.00,expense,pending,Conta Principal,,Saude,Clinica Central,saude
+2026-03-12,,Reembolso corporativo,320.00,income,cleared,Conta Principal,,Reembolso,Empresa,reembolso
+2026-03-13,2026-03-13,Combustivel,-220.00,expense,cleared,Conta Principal,,Transporte,,carro
+2026-03-14,,Transferencia para poupanca,400.00,transfer,cleared,Conta Principal,Conta Poupanca,,,investimento

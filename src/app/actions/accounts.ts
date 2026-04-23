@@ -1,4 +1,4 @@
-﻿"use server";
+"use server";
 
 import { createClient } from "@/lib/supabase/server";
 import { getActiveOrgIdForUser } from "@/lib/active-org";
@@ -93,6 +93,33 @@ export async function updateAccount(input: UpdateAccountInput) {
 
     if (error) return { error: error.message };
     if (!data) return { error: "Conta nao encontrada na organizacao atual" };
+
+    revalidatePath("/dashboard/cadastros");
+    revalidatePath("/dashboard");
+    return {};
+}
+
+/** Zera o saldo inicial de todas as contas ativas da organização. Use após excluir todos os lançamentos para que o saldo exibido fique zerado. */
+export async function resetInitialBalances() {
+    const supabase = await createClient();
+    const {
+        data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return { error: "Nao autorizado" };
+
+    const orgId = await getActiveOrgIdForUser(supabase, user.id);
+    if (!orgId) return { error: "Organizacao nao encontrada" };
+
+    const { error } = await supabase
+        .from("accounts")
+        .update({
+            initial_balance: 0,
+            updated_at: new Date().toISOString(),
+        })
+        .eq("org_id", orgId)
+        .eq("is_active", true);
+
+    if (error) return { error: error.message };
 
     revalidatePath("/dashboard/cadastros");
     revalidatePath("/dashboard");

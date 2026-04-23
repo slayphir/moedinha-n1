@@ -9,10 +9,10 @@ const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 export async function getTelegramConfig() {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return { error: "NÃ£o autorizado" };
+    if (!user) return { error: "Não autorizado" };
 
     const orgId = await getActiveOrgIdForUser(supabase, user.id);
-    if (!orgId) return { error: "OrganizaÃ§Ã£o nÃ£o encontrada" };
+    if (!orgId) return { error: "Organização não encontrada" };
 
     const { data: org, error } = await supabase
         .from("orgs")
@@ -37,10 +37,10 @@ export type TelegramConfigInput = {
 export async function updateTelegramConfig(config: TelegramConfigInput) {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return { error: "NÃ£o autorizado" };
+    if (!user) return { error: "Não autorizado" };
 
     const orgId = await getActiveOrgIdForUser(supabase, user.id);
-    if (!orgId) return { error: "OrganizaÃ§Ã£o nÃ£o encontrada" };
+    if (!orgId) return { error: "Organização não encontrada" };
 
     const { error } = await supabase
         .from("orgs")
@@ -54,15 +54,15 @@ export async function updateTelegramConfig(config: TelegramConfigInput) {
 }
 
 export async function testTelegramIntegration(chatId: string) {
-    if (!TELEGRAM_BOT_TOKEN) return { error: "Token do Bot nÃ£o configurado no servidor (.env)" };
+    if (!TELEGRAM_BOT_TOKEN) return { error: "Token do Bot não configurado no servidor (.env)" };
 
     try {
         const res = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { "Content-Type": "application/json; charset=utf-8" },
             body: JSON.stringify({
                 chat_id: chatId,
-                text: "ðŸ”” *Moedinha*: Teste de IntegraÃ§Ã£o!\n\nSe vocÃª recebeu esta mensagem, seu Chat ID estÃ¡ correto.",
+                text: "💰 *Moedinha*: Teste de Integração!\n\nSe você recebeu esta mensagem, seu Chat ID está correto.",
                 parse_mode: "Markdown"
             })
         });
@@ -85,7 +85,7 @@ export async function sendTelegramMessage(chatId: string, text: string) {
     try {
         await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { "Content-Type": "application/json; charset=utf-8" },
             body: JSON.stringify({
                 chat_id: chatId,
                 text: text,

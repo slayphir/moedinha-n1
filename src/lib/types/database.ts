@@ -56,6 +56,8 @@ export interface Category {
   icon: string | null;
   color: string | null;
   default_bucket_id: string | null;
+  /** Quando true: lançamento com contato nesta categoria = esta pessoa me paga (receita). */
+  is_creditor_center?: boolean;
   created_at: string;
 }
 

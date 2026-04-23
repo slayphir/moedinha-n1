@@ -23,6 +23,8 @@ export const transactionSchema = z
     endDate: z.string().optional().nullable(),
 
     contactId: z.string().optional().nullable(),
+    /** No lançamento: "Eu paguei por ela" (paid_by_me) ou "Ela me pagou" (paid_to_me). Só relevante quando contactId está preenchido. */
+    contactPaymentDirection: z.enum(["paid_by_me", "paid_to_me"]).optional().nullable(),
     tags: z.array(z.string()).default([]),
 
     interestAmount: z.coerce.number().min(0).optional().nullable(),

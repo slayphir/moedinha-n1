@@ -9,6 +9,7 @@ import { startOfMonth } from "date-fns";
 import { computeMonthlyMetrics } from "@/lib/distribution/metrics";
 import { generateAlerts } from "@/lib/alerts/generate";
 import { env } from "@/lib/env";
+import { attachCategoryType, sumDespesas, isDespesa } from "@/lib/transactions/classification";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -48,19 +49,36 @@ export async function GET(request: Request) {
       bucketNames[b.id] = b.name;
     });
 
+    const { data: categoryRows } = await supabase
+      .from("categories")
+      .select("id, type, is_creditor_center")
+      .eq("org_id", orgId);
+    const contactPaysMeCategoryIds = new Set((categoryRows ?? []).filter((c) => c.is_creditor_center).map((c) => c.id));
+    const categoryTypeById = new Map((categoryRows ?? []).map((c) => [c.id, c.type]));
+
     const { data: txList } = await supabase
       .from("transactions")
-      .select("bucket_id, amount")
+      .select("bucket_id, amount, type, contact_id, category_id, contact_payment_direction")
       .eq("org_id", orgId)
-      .eq("type", "expense")
+      .neq("type", "transfer")
       .gte("date", monthStr.slice(0, 7) + "-01")
       .lte("date", monthStr.slice(0, 7) + "-31")
       .is("deleted_at", null);
 
-    const monthTx = txList ?? [];
-    const totalExpense = monthTx.reduce((s, t) => s + Math.abs(Number(t.amount)), 0);
-    const pendingCount = monthTx.filter((t) => !t.bucket_id).length;
-    const pendingSpend = monthTx.filter((t) => !t.bucket_id).reduce((s, t) => s + Math.abs(Number(t.amount)), 0);
+    const monthTx = attachCategoryType((txList ?? []) as {
+      bucket_id: string | null;
+      amount: number | string;
+      type: string;
+      contact_id?: string | null;
+      category_id?: string | null;
+      contact_payment_direction?: string | null;
+    }[], categoryTypeById);
+    const totalExpense = sumDespesas(monthTx, contactPaysMeCategoryIds);
+    const despesas = monthTx.filter((t) => isDespesa(t, contactPaysMeCategoryIds));
+    const pendingCount = despesas.filter((t) => !t.bucket_id).length;
+    const pendingSpend = despesas
+      .filter((t) => !t.bucket_id)
+      .reduce((s, t) => s + Math.abs(Number(t.amount)), 0);
     const pendingPct = totalExpense > 0 ? (pendingSpend / totalExpense) * 100 : 0;
 
     const emitted = await generateAlerts(supabase, orgId, null, monthStr, metrics, bucketNames, {

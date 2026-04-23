@@ -1,4 +1,4 @@
-﻿"use server";
+"use server";
 
 import { createClient } from "@/lib/supabase/server";
 import { getActiveOrgIdForUser } from "@/lib/active-org";
@@ -47,10 +47,10 @@ export type CreateRecurringRuleInput = {
 export async function createRecurringRule(input: CreateRecurringRuleInput) {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return { error: "NÃ£o autorizado" };
+    if (!user) return { error: "Não autorizado" };
 
     const orgId = await getActiveOrgIdForUser(supabase, user.id);
-    if (!orgId) return { error: "Sem organizaÃ§Ã£o" };
+    if (!orgId) return { error: "Sem organização" };
 
     // Calculate day_of_month/week from start_date
     const date = parseISO(input.start_date);
@@ -151,7 +151,7 @@ export async function processRecurringRules(orgId: string) {
                 amount: rule.amount,
                 account_id: rule.account_id,
                 category_id: rule.category_id,
-                description: `${rule.description} (AutomÃ¡tico)`,
+                description: `${rule.description} (Automático)`,
                 date: nextDueDate.toISOString().slice(0, 10),
                 created_by: null,
                 metadata: { recurring_rule_id: rule.id, source: "recurring_worker" }

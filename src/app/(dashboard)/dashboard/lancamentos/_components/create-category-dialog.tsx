@@ -72,6 +72,12 @@ export function CreateCategoryDialog({
   }, [open, supabase]);
 
   useEffect(() => {
+    if (open && defaultType) {
+      form.setValue("type", defaultType, { shouldValidate: true });
+    }
+  }, [open, defaultType, form]);
+
+  useEffect(() => {
     if (!bucketEnabled) {
       form.setValue("defaultBucketId", null, { shouldValidate: true });
     }

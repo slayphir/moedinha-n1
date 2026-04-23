@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
-import { BarChart3, ChevronDown, Coins, LayoutDashboard, List, LogOut, Menu, Percent, Repeat, Settings, Tag, Target, Users, Wallet, CreditCard, Calendar as CalendarIcon, FileText } from "lucide-react";
+import { BarChart3, ChevronDown, Coins, LayoutDashboard, List, LogOut, Menu, Percent, Repeat, Settings, Tag, Target, Users, Wallet, CreditCard, Calendar as CalendarIcon, FileText, HandCoins } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useOrg } from "@/contexts/org-context";
 import { CommandPalette } from "./command-palette";
@@ -37,41 +37,42 @@ export function DashboardShell({
       title: "Principal",
       items: [
         { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-        { href: "/dashboard/lancamentos", label: "LanÃ§amentos", icon: List },
-        { href: "/dashboard/distribuicao", label: "DistribuiÃ§Ã£o 50/30/20", icon: Percent },
-        { href: "/dashboard/faturas", label: "CartÃµes & Faturas", icon: CreditCard },
+        { href: "/dashboard/lancamentos", label: "Lançamentos", icon: List },
+        { href: "/dashboard/distribuicao", label: "Distribuição 50/30/20", icon: Percent },
+        { href: "/dashboard/faturas", label: "Cartões & Faturas", icon: CreditCard },
         { href: "/dashboard/metas", label: "Metas & Objetivos", icon: Target },
-        { href: "/dashboard/relatorios", label: "RelatÃ³rios", icon: BarChart3 },
+        { href: "/dashboard/relatorios", label: "Relatórios", icon: BarChart3 },
+        { href: "/dashboard/terceiros", label: "Terceiros", icon: HandCoins },
         { href: "/dashboard/relatorios/ir", label: "Auxiliar IR", icon: FileText },
-        { href: "/dashboard/calendario", label: "CalendÃ¡rio", icon: CalendarIcon },
+        { href: "/dashboard/calendario", label: "Calendário", icon: CalendarIcon },
         { href: "/dashboard/assinaturas", label: "Assinaturas", icon: Repeat },
       ],
     },
     {
-      title: "ConfiguraÃ§Ãµes",
+      title: "Configurações",
       collapsible: true,
       items: [
         { href: "/dashboard/cadastros?tab=accounts", label: "Contas", icon: Wallet },
         { href: "/dashboard/cadastros?tab=categories", label: "Categorias", icon: List },
-        { href: "/dashboard/cadastros?tab=budgets", label: "OrÃ§amentos", icon: Wallet },
+        { href: "/dashboard/cadastros?tab=budgets", label: "Orçamentos", icon: Wallet },
         { href: "/dashboard/cadastros?tab=tags", label: "Regras / Tags", icon: Tag },
         { href: "/dashboard/cadastros?tab=contacts", label: "Contatos", icon: Users },
-        { href: "/dashboard/configuracoes", label: "PreferÃªncias", icon: Settings },
+        { href: "/dashboard/configuracoes", label: "Preferências", icon: Settings },
       ],
     },
     {
-      title: "GamificaÃ§Ã£o",
+      title: "Gamificação",
       items: [
-        { href: "/dashboard/cofre", label: "Cofre (NÃ­vel)", icon: Coins },
+        { href: "/dashboard/cofre", label: "Cofre (Nível)", icon: Coins },
       ],
     },
   ];
 
   // Mobile bottom nav â€” only essential items
   const mobileNavItems = [
-    { href: "/dashboard", label: "InÃ­cio", icon: LayoutDashboard },
-    { href: "/dashboard/lancamentos", label: "LanÃ§amentos", icon: List },
-    { href: "/dashboard/distribuicao", label: "DistribuiÃ§Ã£o", icon: Percent },
+    { href: "/dashboard", label: "Início", icon: LayoutDashboard },
+    { href: "/dashboard/lancamentos", label: "Lançamentos", icon: List },
+    { href: "/dashboard/distribuicao", label: "Distribuição", icon: Percent },
     { href: "/dashboard/metas", label: "Metas", icon: Target },
   ];
 
@@ -85,7 +86,7 @@ export function DashboardShell({
         <div className="flex h-14 items-center gap-2 border-b border-paper/20 px-4">
           <Link href="/dashboard" className="flex items-center gap-2 font-semibold text-coin">
             <Coins className="h-4 w-4 animate-coin-spin" />
-            <span className="font-display text-lg coin-shimmer">Moedinha NÂº1</span>
+            <span className="font-display text-lg coin-shimmer">Moedinha Nº1</span>
           </Link>
         </div>
 

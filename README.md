@@ -1,6 +1,8 @@
-# Financeiro Lazy
+# Moedinha (Sistema Financeiro)
 
-MÃ³dulo web de controle financeiro com **mÃ­nimo de cliques**: FAB para novo lanÃ§amento, Command Palette (Ctrl+K), modal Ãºnico para cadastro, sugestÃµes por descriÃ§Ã£o e templates rÃ¡pidos.
+Projeto na **raiz do repositório** – um único app, sem subpastas.
+
+Módulo web de controle financeiro com **mÃ­nimo de cliques**: FAB para novo lanÃ§amento, Command Palette (Ctrl+K), modal Ãºnico para cadastro, sugestÃµes por descriÃ§Ã£o e templates rÃ¡pidos.
 
 **Stack:** Next.js 14 (App Router), TypeScript, Tailwind, shadcn/ui, Recharts, TanStack Table, React Hook Form + Zod, Supabase (Auth, Postgres, Storage, RLS).
 

@@ -7,21 +7,19 @@ import { computeMonthlyMetrics } from "@/lib/distribution/metrics";
 import { getGoals } from "@/app/actions/goals";
 import { getSetupData } from "@/app/actions/complete-setup";
 import { isRetroactiveInstallmentBackfill } from "@/lib/transactions/retroactive";
+import {
+  attachCategoryType,
+  signedAmount,
+  sumReceitas,
+  sumDespesas,
+  isDespesa,
+} from "@/lib/transactions/classification";
 
 type DashboardFilterPreset = "day" | "7d" | "30d" | "month" | "custom";
 
 type PageSearchParams = {
   [key: string]: string | string[] | undefined;
 };
-
-function signedAmount(tx: { type: string; amount: number | string | null }) {
-  const raw = Number(tx.amount ?? 0);
-  const abs = Math.abs(raw);
-
-  if (tx.type === "income") return abs;
-  if (tx.type === "expense") return -abs;
-  return 0;
-}
 
 function parseIsoDate(value: string | undefined): Date | null {
   if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
@@ -64,7 +62,7 @@ export default async function DashboardPage({
 
   const { data: org } = await supabase
     .from("orgs")
-    .select("setup_completed, balance_start_date")
+    .select("setup_completed")
     .eq("id", orgId)
     .single();
 
@@ -120,10 +118,6 @@ export default async function DashboardPage({
 
   const selectedStartIso = toDateOnly(rangeStart);
   const selectedEndIso = toDateOnly(rangeEnd);
-  const balanceStartIso =
-    typeof org?.balance_start_date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(org.balance_start_date)
-      ? org.balance_start_date
-      : null;
 
   const comparisonDays = Math.max(1, differenceInCalendarDays(rangeEnd, rangeStart) + 1);
   const previousStart = subDays(rangeStart, comparisonDays);
@@ -156,35 +150,23 @@ export default async function DashboardPage({
     .select("id", { count: "exact", head: true })
     .eq("org_id", orgId);
 
-  const { data: txList, error } = await supabase
+  const { data: categoryRows } = await supabase
+    .from("categories")
+    .select("id, type, is_creditor_center")
+    .eq("org_id", orgId);
+  const contactPaysMeCategoryIds = new Set((categoryRows ?? []).filter((c) => c.is_creditor_center).map((c) => c.id));
+  const categoryTypeById = new Map((categoryRows ?? []).map((c) => [c.id, c.type]));
+
+  // Saldo e cards usam só lançamentos quitados (cleared/reconciled) para valores reais
+  const { data: txBalanceList, error: balanceError } = await supabase
     .from("transactions")
-    .select("id, amount, date, type, category_id, bucket_id, deleted_at")
-    .eq("org_id", orgId)
-    .is("deleted_at", null)
-    .gte("date", toDateOnly(txQueryStart))
-    .lte("date", selectedEndIso)
-    .order("date", { ascending: true });
-
-  if (error) {
-    console.error("Error fetching transactions:", error);
-    throw error;
-  }
-
-  const tx = (txList ?? []).filter((t) => !t.deleted_at);
-
-  let txBalanceQuery = supabase
-    .from("transactions")
-    .select("amount, type, status, date, deleted_at, installment_id, created_at, metadata")
+    .select("id, amount, type, status, date, deleted_at, installment_id, created_at, metadata, contact_id, category_id, contact_payment_direction, bucket_id")
     .eq("org_id", orgId)
     .is("deleted_at", null)
     .in("status", ["cleared", "reconciled"])
-    .lte("date", selectedEndIso);
-
-  if (balanceStartIso) {
-    txBalanceQuery = txBalanceQuery.gte("date", balanceStartIso);
-  }
-
-  const { data: txBalanceList, error: balanceError } = await txBalanceQuery;
+    .gte("date", toDateOnly(txQueryStart))
+    .lte("date", selectedEndIso)
+    .order("date", { ascending: true });
 
   if (balanceError) {
     console.error("Error fetching balance transactions:", balanceError);
@@ -195,19 +177,33 @@ export default async function DashboardPage({
     (t) => !t.deleted_at && !isRetroactiveInstallmentBackfill(t)
   );
 
+  const tx = attachCategoryType(txBalance, categoryTypeById);
+
+  const { data: txBalanceFullList } = await supabase
+    .from("transactions")
+    .select("amount, type, status, date, deleted_at, installment_id, created_at, metadata, contact_id, category_id, contact_payment_direction")
+    .eq("org_id", orgId)
+    .is("deleted_at", null)
+    .in("status", ["cleared", "reconciled"])
+    .lte("date", selectedEndIso);
+
+  const txBalanceForSaldo = (txBalanceFullList ?? []).filter(
+    (t) => !t.deleted_at && !isRetroactiveInstallmentBackfill(t)
+  );
+
   const monthTx = tx.filter((t) => t.date >= selectedStartIso && t.date <= selectedEndIso);
 
-  const receitasMes = monthTx.filter((t) => t.type === "income").reduce((s, t) => s + Number(t.amount), 0);
-  const despesasMes = monthTx.filter((t) => t.type === "expense").reduce((s, t) => s + Math.abs(Number(t.amount)), 0);
+  const receitasMes = sumReceitas(monthTx, contactPaysMeCategoryIds);
+  const despesasMes = sumDespesas(monthTx, contactPaysMeCategoryIds);
 
   const initialBalanceTotal = accounts?.reduce((s, a) => s + Number(a.initial_balance), 0) ?? 0;
-  const saldoOrbita = initialBalanceTotal + txBalance.reduce((s, t) => s + signedAmount(t), 0);
+  const saldoOrbita = initialBalanceTotal + txBalanceForSaldo.reduce((s, t) => s + signedAmount(t, contactPaysMeCategoryIds), 0);
 
   const { data: byCategory, error: catError } = await supabase
     .from("transactions")
-    .select("amount, category_id, categories(name)")
+    .select("amount, type, contact_id, category_id, contact_payment_direction, categories(name)")
     .eq("org_id", orgId)
-    .eq("type", "expense")
+    .neq("type", "transfer")
     .gte("date", selectedStartIso)
     .lte("date", selectedEndIso)
     .is("deleted_at", null);
@@ -217,22 +213,38 @@ export default async function DashboardPage({
   }
 
   const categoryTotals: Record<string, number> = {};
-  (byCategory ?? []).forEach((r: { amount: number; categories: { name: string } | { name: string }[] | null }) => {
-    const cat = Array.isArray(r.categories) ? r.categories[0] : r.categories;
-    const name = cat?.name ?? "Sem categoria";
-    categoryTotals[name] = (categoryTotals[name] ?? 0) + Math.abs(Number(r.amount));
-  });
+  attachCategoryType((byCategory ?? []) as {
+      amount: number;
+      type: string;
+      contact_id?: string | null;
+      category_id?: string | null;
+      categories: { name: string } | { name: string }[] | null;
+    }[], categoryTypeById).forEach(
+    (r: {
+      amount: number;
+      type: string;
+      contact_id?: string | null;
+      category_id?: string | null;
+      category_type?: string | null;
+      categories: { name: string } | { name: string }[] | null;
+    }) => {
+      if (!isDespesa(r, contactPaysMeCategoryIds)) return;
+      const cat = Array.isArray(r.categories) ? r.categories[0] : r.categories;
+      const name = cat?.name ?? "Sem categoria";
+      categoryTotals[name] = (categoryTotals[name] ?? 0) + Math.abs(Number(r.amount));
+    }
+  );
 
   const lastMonthTx = tx.filter((t) => t.date >= toDateOnly(previousStart) && t.date <= toDateOnly(previousEnd));
-  const lastDespesas = lastMonthTx.filter((t) => t.type === "expense").reduce((s, t) => s + Math.abs(Number(t.amount)), 0);
+  const lastDespesas = sumDespesas(lastMonthTx, contactPaysMeCategoryIds);
   const variacao = lastDespesas > 0 ? ((despesasMes - lastDespesas) / lastDespesas) * 100 : 0;
 
   const previousCategoryTotals: Record<string, number> = {};
   const { data: previousByCategory, error: prevCatError } = await supabase
     .from("transactions")
-    .select("amount, category_id, categories(name)")
+    .select("amount, type, contact_id, category_id, contact_payment_direction, categories(name)")
     .eq("org_id", orgId)
-    .eq("type", "expense")
+    .neq("type", "transfer")
     .gte("date", toDateOnly(previousStart))
     .lte("date", toDateOnly(previousEnd))
     .is("deleted_at", null);
@@ -241,11 +253,27 @@ export default async function DashboardPage({
     console.error("Error fetching previous categories:", prevCatError);
   }
 
-  (previousByCategory ?? []).forEach((r: { amount: number; categories: { name: string } | { name: string }[] | null }) => {
-    const cat = Array.isArray(r.categories) ? r.categories[0] : r.categories;
-    const name = cat?.name ?? "Sem categoria";
-    previousCategoryTotals[name] = (previousCategoryTotals[name] ?? 0) + Math.abs(Number(r.amount));
-  });
+  attachCategoryType((previousByCategory ?? []) as {
+      amount: number;
+      type: string;
+      contact_id?: string | null;
+      category_id?: string | null;
+      categories: { name: string } | { name: string }[] | null;
+    }[], categoryTypeById).forEach(
+    (r: {
+      amount: number;
+      type: string;
+      contact_id?: string | null;
+      category_id?: string | null;
+      category_type?: string | null;
+      categories: { name: string } | { name: string }[] | null;
+    }) => {
+      if (!isDespesa(r, contactPaysMeCategoryIds)) return;
+      const cat = Array.isArray(r.categories) ? r.categories[0] : r.categories;
+      const name = cat?.name ?? "Sem categoria";
+      previousCategoryTotals[name] = (previousCategoryTotals[name] ?? 0) + Math.abs(Number(r.amount));
+    }
+  );
 
   const categoriasEmAlta = Object.entries(categoryTotals)
     .map(([name, current]) => {
@@ -258,12 +286,25 @@ export default async function DashboardPage({
     .sort((a, b) => b.pct - a.pct)
     .slice(0, 3);
 
-  let runningBalance = 0;
-  const flow90 = tx
-    .filter((t) => t.date >= toDateOnly(flow90Start) && t.date <= selectedEndIso)
-    .map((item) => {
-      runningBalance += signedAmount(item);
-      return { date: item.date, saldo: runningBalance };
+  const flow90StartIso = toDateOnly(flow90Start);
+  const initialBalanceForFlow =
+    initialBalanceTotal +
+    txBalance
+      .filter((t) => t.date < flow90StartIso)
+      .reduce((s, t) => s + signedAmount(t, contactPaysMeCategoryIds), 0);
+  const flow90Tx = txBalance.filter(
+    (t) => t.date >= flow90StartIso && t.date <= selectedEndIso
+  );
+  const flow90ByDate: Record<string, number> = {};
+  flow90Tx.forEach((t) => {
+    flow90ByDate[t.date] = (flow90ByDate[t.date] ?? 0) + signedAmount(t, contactPaysMeCategoryIds);
+  });
+  let runningBalance = initialBalanceForFlow;
+  const flow90 = Object.keys(flow90ByDate)
+    .sort()
+    .map((date) => {
+      runningBalance += flow90ByDate[date];
+      return { date, saldo: runningBalance };
     });
 
   let monthSnapshot: Awaited<ReturnType<typeof computeMonthlyMetrics>> | null = null;
@@ -327,11 +368,12 @@ export default async function DashboardPage({
 
   const goals = await getGoals();
 
-  const pendingCount = monthTx.filter((t) => t.type === "expense" && !t.bucket_id).length;
-  const totalExpense = monthTx.filter((t) => t.type === "expense").reduce((s, t) => s + Math.abs(Number(t.amount)), 0);
+  const monthTxDespesas = monthTx.filter((t) => isDespesa(t, contactPaysMeCategoryIds));
+  const pendingCount = monthTxDespesas.filter((t) => !t.bucket_id).length;
+  const totalExpense = monthTxDespesas.reduce((s, t) => s + Math.abs(Number(t.amount)), 0);
   const pendingPct =
     totalExpense > 0
-      ? (monthTx.filter((t) => t.type === "expense" && !t.bucket_id).reduce((s, t) => s + Math.abs(Number(t.amount)), 0) /
+      ? (monthTxDespesas.filter((t) => !t.bucket_id).reduce((s, t) => s + Math.abs(Number(t.amount)), 0) /
           totalExpense) *
         100
       : 0;

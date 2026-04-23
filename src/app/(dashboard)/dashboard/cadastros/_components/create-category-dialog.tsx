@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 
 type BucketOption = {
   id: string;
@@ -20,6 +21,7 @@ const schema = z.object({
   name: z.string().min(1, "Nome e obrigatorio"),
   type: z.enum(["income", "expense", "transfer"]),
   defaultBucketId: z.string().nullable(),
+  isCreditorCenter: z.boolean(),
 });
 
 export function CreateCategoryDialog({
@@ -37,7 +39,7 @@ export function CreateCategoryDialog({
 
   const form = useForm<z.infer<typeof schema>>({
     resolver: zodResolver(schema),
-    defaultValues: { name: "", type: "expense", defaultBucketId: null },
+    defaultValues: { name: "", type: "expense", defaultBucketId: null, isCreditorCenter: false },
   });
 
   const selectedType = form.watch("type");
@@ -88,6 +90,7 @@ export function CreateCategoryDialog({
           type: data.type,
           org_id: orgId,
           default_bucket_id: bucketEnabled ? data.defaultBucketId : null,
+          is_creditor_center: data.type !== "transfer" && data.isCreditorCenter,
         });
 
       if (error) throw error;
@@ -131,6 +134,25 @@ export function CreateCategoryDialog({
               </SelectContent>
             </Select>
           </div>
+          {form.watch("type") !== "transfer" && (
+            <div className="space-y-2 rounded-md border border-stroke/60 bg-paper/40 p-3">
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="isCreditorCenter"
+                  checked={form.watch("isCreditorCenter")}
+                  onCheckedChange={(checked) => form.setValue("isCreditorCenter", checked === true)}
+                />
+                <Label htmlFor="isCreditorCenter" className="text-sm font-normal cursor-pointer">
+                  Esta pessoa me paga (quando há contato)
+                </Label>
+              </div>
+              <p className="text-xs text-muted-foreground pl-6">
+                {form.watch("type") === "income"
+                  ? "Marque para devolucao de emprestimo, pagamento de terceiros etc. Com contato, esses lancamentos entram no saldo e no historico de Terceiros, sem inflar o card de Receitas."
+                  : "Ex.: parcela no cartao: categoria sem marca = voce paga (despesa); com marca = a pessoa te paga. Isso afeta saldo e Terceiros, nao os cards operacionais."}
+              </p>
+            </div>
+          )}
           <div className="space-y-2">
             <Label>Bucket padrao</Label>
             <Select

@@ -6,6 +6,10 @@ import { ptBR } from "date-fns/locale";
 
 export async function GET(request: Request) {
     const secret = process.env.CRON_SECRET;
+    const isVercel = process.env.VERCEL === "1";
+    if (isVercel && !secret) {
+        return new Response("CRON_SECRET not configured", { status: 503 });
+    }
     if (secret) {
         const authHeader = request.headers.get("authorization");
         if (authHeader !== `Bearer ${secret}`) {

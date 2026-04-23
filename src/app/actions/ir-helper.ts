@@ -28,10 +28,10 @@ export type IRData = {
 export async function getIncomeTaxData(year: number): Promise<{ data?: IRData; error?: string }> {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return { error: "NÃ£o autorizado" };
+    if (!user) return { error: "Não autorizado" };
 
     const orgId = await getActiveOrgIdForUser(supabase, user.id);
-    if (!orgId) return { error: "OrganizaÃ§Ã£o nÃ£o encontrada" };
+    if (!orgId) return { error: "Organização não encontrada" };
 
     // Date Boundaries
     const startOfYear = `${year}-01-01`;

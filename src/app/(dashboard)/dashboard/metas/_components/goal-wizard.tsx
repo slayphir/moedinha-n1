@@ -42,8 +42,8 @@ import { useToast } from "@/components/ui/use-toast";
 const goalSchema = z.object({
     name: z.string().min(3, "Nome muito curto"),
     type: z.enum(["savings", "emergency_fund", "debt", "reduction", "purchase", "piggy_bank"]),
-    target_amount: z.coerce.number().min(0.01, "Valor invÃ¡lido"),
-    target_date: z.date({ required_error: "Prazo Ã© obrigatÃ³rio" }),
+    target_amount: z.coerce.number().min(0.01, "Valor inválido"),
+    target_date: z.date({ required_error: "Prazo é obrigatório" }),
     current_amount: z.coerce.number().default(0),
     strategy: z.enum(["bucket_fraction", "month_leftover", "fixed_amount", "manual"]),
 });
@@ -121,7 +121,7 @@ export function GoalWizard({ goal, trigger }: Props) {
         } else {
             toast({
                 title: isEditing ? "Meta atualizada!" : "Meta criada!",
-                description: isEditing ? "As alteraÃ§Ãµes foram salvas." : "Vamos trabalhar para alcanÃ§Ã¡-la.",
+                description: isEditing ? "As alterações foram salvas." : "Vamos trabalhar para alcançá-la.",
             });
             setOpen(false);
             if (!isEditing) form.reset();
@@ -142,7 +142,7 @@ export function GoalWizard({ goal, trigger }: Props) {
                 <DialogHeader>
                     <DialogTitle>{isEditing ? "Editar Meta" : "Criar Nova Meta"}</DialogTitle>
                     <DialogDescription>
-                        {isEditing ? "Atualize os detalhes do seu objetivo." : "Defina seu objetivo e como planeja alcanÃ§Ã¡-lo."}
+                        {isEditing ? "Atualize os detalhes do seu objetivo." : "Defina seu objetivo e como planeja alcançá-lo."}
                     </DialogDescription>
                 </DialogHeader>
 
@@ -155,7 +155,7 @@ export function GoalWizard({ goal, trigger }: Props) {
                                 <FormItem>
                                     <FormLabel>Nome da Meta</FormLabel>
                                     <FormControl>
-                                        <Input placeholder="Ex: Viagem JapÃ£o, Reserva..." {...field} />
+                                        <Input placeholder="Ex: Viagem Japão, Reserva..." {...field} />
                                     </FormControl>
                                     <FormMessage />
                                 </FormItem>
@@ -179,8 +179,8 @@ export function GoalWizard({ goal, trigger }: Props) {
                                                 <SelectItem value="piggy_bank">Cofrinho</SelectItem>
                                                 <SelectItem value="purchase">Compra / Sonho</SelectItem>
                                                 <SelectItem value="savings">Investimento</SelectItem>
-                                                <SelectItem value="debt">Quitar DÃ­vida</SelectItem>
-                                                <SelectItem value="reduction">ReduÃ§Ã£o de Gastos</SelectItem>
+                                                <SelectItem value="debt">Quitar Dívida</SelectItem>
+                                                <SelectItem value="reduction">Redução de Gastos</SelectItem>
                                             </SelectContent>
                                         </Select>
                                         <FormMessage />
@@ -209,7 +209,7 @@ export function GoalWizard({ goal, trigger }: Props) {
                                 name="current_amount"
                                 render={({ field }) => (
                                     <FormItem>
-                                        <FormLabel>JÃ¡ guardado (R$)</FormLabel>
+                                        <FormLabel>Já guardado (R$)</FormLabel>
                                         <FormControl>
                                             <Input type="number" step="0.01" {...field} />
                                         </FormControl>
@@ -266,7 +266,7 @@ export function GoalWizard({ goal, trigger }: Props) {
                             name="strategy"
                             render={({ field }) => (
                                 <FormItem>
-                                    <FormLabel>EstratÃ©gia de Funding</FormLabel>
+                                    <FormLabel>Estratégia de Funding</FormLabel>
                                     <Select onValueChange={field.onChange} defaultValue={field.value}>
                                         <FormControl>
                                             <SelectTrigger>
@@ -276,7 +276,7 @@ export function GoalWizard({ goal, trigger }: Props) {
                                         <SelectContent>
                                             <SelectItem value="manual">Aportes Manuais</SelectItem>
                                             <SelectItem value="fixed_amount">Valor Fixo Mensal</SelectItem>
-                                            <SelectItem value="month_leftover">Sobras do MÃªs</SelectItem>
+                                            <SelectItem value="month_leftover">Sobras do Mês</SelectItem>
                                             <SelectItem value="bucket_fraction">Bucket Metas (20%)</SelectItem>
                                         </SelectContent>
                                     </Select>
@@ -293,7 +293,7 @@ export function GoalWizard({ goal, trigger }: Props) {
                             ) : (
                                 <Target className="mr-2 h-4 w-4" />
                             )}
-                            {isEditing ? "Salvar AlteraÃ§Ãµes" : "Criar Meta"}
+                            {isEditing ? "Salvar Alterações" : "Criar Meta"}
                         </Button>
                     </form>
                 </Form>

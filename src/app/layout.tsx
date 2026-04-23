@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { DM_Serif_Display, Sora } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
@@ -21,6 +21,22 @@ const displayFont = DM_Serif_Display({
 export const metadata: Metadata = {
   title: "Moedinha N°1 - Caixa Forte",
   description: "Controle financeiro colorido, rapido e gamificado para seu dia a dia.",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+  },
+  icons: {
+    apple: "/icon-192.png",
+  },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  viewportFit: "cover",
+  themeColor: "#10b981",
 };
 
 export default function RootLayout({
@@ -30,14 +46,6 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="pt-BR" className={`${bodyFont.variable} ${displayFont.variable}`} suppressHydrationWarning>
-      <head>
-        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
-        <link rel="manifest" href="/manifest.json" />
-        <meta name="theme-color" content="#10b981" />
-        <meta name="apple-mobile-web-app-capable" content="yes" />
-        <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-        <link rel="apple-touch-icon" href="/icon-192.png" />
-      </head>
       <body className="min-h-screen bg-background font-sans antialiased" suppressHydrationWarning>
         <Providers>
           <FilterProvider>

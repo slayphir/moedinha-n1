@@ -1,8 +1,9 @@
-﻿"use server";
+"use server";
 
 import { createClient } from "@/lib/supabase/server";
 import { getActiveOrgIdForUser } from "@/lib/active-org";
 import { isRetroactiveInstallmentBackfill } from "@/lib/transactions/retroactive";
+import { attachCategoryType, sumReceitas, sumDespesas, isDespesa } from "@/lib/transactions/classification";
 import { toISODateLocal } from "@/lib/utils";
 
 export type CategorySpend = {
@@ -49,6 +50,9 @@ type TransactionRow = {
   status: "pending" | "cleared" | "reconciled" | "cancelled" | string;
   category_id: string | null;
   bucket_id: string | null;
+  contact_id: string | null;
+  contact_payment_direction?: string | null;
+  category_type?: string | null;
   due_date: string | null;
   installment_id: string | null;
   created_at: string | null;
@@ -60,12 +64,15 @@ type TransactionRow = {
 type PrevTransactionRow = {
   amount: number | string;
   type: "income" | "expense" | "transfer";
-  status: "pending" | "cleared" | "reconciled" | "cancelled" | string;
+  status: string;
   date: string;
+  contact_id: string | null;
+  category_id: string | null;
+  category_type?: string | null;
+  contact_payment_direction?: string | null;
   installment_id: string | null;
   created_at: string | null;
   metadata: Record<string, unknown> | null;
-  category_id: string | null;
 };
 
 type DistributionRow = {
@@ -103,10 +110,17 @@ export async function getReportMetrics(startDate: string, endDate: string): Prom
   const orgId = await getActiveOrgIdForUser(supabase, user.id);
   if (!orgId) return emptyMetrics();
 
+  const { data: categoryRows } = await supabase
+    .from("categories")
+    .select("id, type, is_creditor_center")
+    .eq("org_id", orgId);
+  const contactPaysMeCategoryIds = new Set((categoryRows ?? []).filter((c) => c.is_creditor_center).map((c) => c.id));
+  const categoryTypeById = new Map((categoryRows ?? []).map((c) => [c.id, c.type]));
+
   const { data: txRows } = await supabase
     .from("transactions")
     .select(
-      "id, amount, date, type, status, category_id, bucket_id, due_date, installment_id, created_at, metadata, categories(name), distribution_buckets(name)"
+      "id, amount, date, type, status, category_id, bucket_id, contact_id, contact_payment_direction, due_date, installment_id, created_at, metadata, categories(name), distribution_buckets(name)"
     )
     .eq("org_id", orgId)
     .is("deleted_at", null)
@@ -114,8 +128,9 @@ export async function getReportMetrics(startDate: string, endDate: string): Prom
     .lte("date", endDate)
     .order("date", { ascending: true });
 
-  const transactions = ((txRows ?? []) as TransactionRow[]).filter(
-    (transaction) => !isRetroactiveInstallmentBackfill(transaction)
+  const transactions = attachCategoryType(
+    ((txRows ?? []) as TransactionRow[]).filter((transaction) => !isRetroactiveInstallmentBackfill(transaction)),
+    categoryTypeById
   );
 
   const startMs = new Date(`${startDate}T12:00:00`).getTime();
@@ -126,23 +141,43 @@ export async function getReportMetrics(startDate: string, endDate: string): Prom
 
   const { data: prevRows } = await supabase
     .from("transactions")
-    .select("amount, category_id, type, status, date, installment_id, created_at, metadata")
+    .select("amount, category_id, type, status, date, contact_id, contact_payment_direction, installment_id, created_at, metadata")
     .eq("org_id", orgId)
     .is("deleted_at", null)
     .gte("date", prevStart)
-    .lte("date", prevEnd)
-    .eq("type", "expense");
+    .lte("date", prevEnd);
 
-  const prevTransactions = ((prevRows ?? []) as PrevTransactionRow[]).filter(
-    (transaction) => !isRetroactiveInstallmentBackfill(transaction)
+  const prevTransactionsRaw = attachCategoryType(
+    ((prevRows ?? []) as PrevTransactionRow[]).filter((transaction) => !isRetroactiveInstallmentBackfill(transaction)),
+    categoryTypeById
+  );
+  const prevTransactions = prevTransactionsRaw.filter((t) =>
+    isDespesa(
+      {
+        type: t.type,
+        amount: t.amount,
+        contact_id: t.contact_id ?? null,
+        category_id: t.category_id ?? null,
+        contact_payment_direction: t.contact_payment_direction ?? null,
+      },
+      contactPaysMeCategoryIds
+    )
   );
 
-  const totalIncome = transactions
-    .filter((transaction) => transaction.type === "income")
-    .reduce((sum, transaction) => sum + Number(transaction.amount), 0);
-
-  const expenses = transactions.filter((transaction) => transaction.type === "expense");
-  const totalExpense = expenses.reduce((sum, transaction) => sum + Math.abs(Number(transaction.amount)), 0);
+  const totalIncome = sumReceitas(transactions, contactPaysMeCategoryIds);
+  const totalExpense = sumDespesas(transactions, contactPaysMeCategoryIds);
+  const expenses = transactions.filter((t) =>
+    isDespesa(
+      {
+        type: t.type,
+        amount: t.amount,
+        contact_id: t.contact_id ?? null,
+        category_id: t.category_id ?? null,
+        contact_payment_direction: t.contact_payment_direction ?? null,
+      },
+      contactPaysMeCategoryIds
+    )
+  );
 
   const categoryTotals: Record<string, { amount: number; name: string }> = {};
   const previousCategoryTotals: Record<string, number> = {};
@@ -233,10 +268,21 @@ export async function getReportMetrics(startDate: string, endDate: string): Prom
     };
   });
 
-  expenses.forEach((transaction) => {
-    if (!transaction.bucket_id) return;
+  const { data: categoryBucketRows } = await supabase
+    .from("categories")
+    .select("id, default_bucket_id")
+    .eq("org_id", orgId);
+  const categoryToBucket: Record<string, string | null> = {};
+  (categoryBucketRows ?? []).forEach((r: { id: string; default_bucket_id: string | null }) => {
+    categoryToBucket[r.id] = r.default_bucket_id ?? null;
+  });
 
-    const bucket = bucketMap[transaction.bucket_id];
+  expenses.forEach((transaction) => {
+    const effectiveBucketId =
+      transaction.bucket_id ?? (transaction.category_id ? categoryToBucket[transaction.category_id] ?? null : null);
+    if (!effectiveBucketId) return;
+
+    const bucket = bucketMap[effectiveBucketId];
     if (!bucket) return;
 
     bucket.spend += Math.abs(Number(transaction.amount));
@@ -306,7 +352,11 @@ export async function getReportMetrics(startDate: string, endDate: string): Prom
   });
 
   const uncategorized = expenses
-    .filter((transaction) => !transaction.bucket_id)
+    .filter((transaction) => {
+      const effectiveBucketId =
+        transaction.bucket_id ?? (transaction.category_id ? categoryToBucket[transaction.category_id] ?? null : null);
+      return !effectiveBucketId;
+    })
     .reduce((sum, transaction) => sum + Math.abs(Number(transaction.amount)), 0);
 
   if (uncategorized > 0) {
@@ -354,5 +404,4 @@ function emptyMetrics(): ReportMetrics {
     totalExpense: 0,
   };
 }
-
 

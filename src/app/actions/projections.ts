@@ -1,4 +1,4 @@
-﻿"use server";
+"use server";
 
 import { createClient } from "@/lib/supabase/server";
 import { getActiveOrgIdForUser } from "@/lib/active-org";
@@ -27,10 +27,10 @@ type LastRunRow = {
 export async function getFinancialProjection(days: number = 90) {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return { error: "NÃ£o autorizado" };
+    if (!user) return { error: "Não autorizado" };
 
     const orgId = await getActiveOrgIdForUser(supabase, user.id);
-    if (!orgId) return { error: "OrganizaÃ§Ã£o nÃ£o encontrada" };
+    if (!orgId) return { error: "Organização não encontrada" };
 
     // 1. Get Accounts (Initial Balances)
     const { data: accounts } = await supabase

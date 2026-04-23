@@ -15,6 +15,7 @@
     "test:watch": "vitest",
     "validate:env": "node scripts/validate-env.mjs",
     "db:check": "node scripts/check-supabase-connection.mjs",
+    "db:clean": "node scripts/clean-db.mjs",
     "db:bundle": "node scripts/generate-setup-sql.mjs"
   },
   "dependencies": {

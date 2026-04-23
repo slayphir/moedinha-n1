@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { AnimatedNumber } from "@/components/ui/animated-number";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, cn } from "@/lib/utils";
 import {
   Bar,
   BarChart,
@@ -156,7 +156,7 @@ function shortDateLabel(value: string): string {
 }
 
 function formatRangeDate(isoDate: string): string {
-  if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(isoDate)) return isoDate;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) return isoDate;
   return `${isoDate.slice(8, 10)}/${isoDate.slice(5, 7)}/${isoDate.slice(0, 4)}`;
 }
 
@@ -298,18 +298,13 @@ export function DashboardClient({
             </h1>
             <p className="mt-1 text-sm text-paper/85">Visão mensal com distribuição, alertas e metas.</p>
           </div>
-
-          {/* Level Badge — compact on mobile, expanded on sm+ */}
           <div className="flex items-center gap-2">
-            {/* Mobile compact badge */}
             <div className="flex sm:hidden items-center gap-1.5 rounded-lg bg-paper/10 backdrop-blur-sm px-2.5 py-1.5 border border-paper/15">
               <div className="flex h-7 w-7 items-center justify-center rounded-full bg-coin text-ink font-bold text-[10px] shadow-md">
                 {levelIndex}
               </div>
               <span className="text-sm">{currentLevel.emoji}</span>
             </div>
-
-            {/* Desktop expanded badge */}
             <div className="hidden sm:flex items-center gap-3 rounded-xl bg-paper/10 backdrop-blur-sm px-4 py-2.5 border border-paper/15">
               <div className="flex h-10 w-10 items-center justify-center rounded-full bg-coin text-ink font-bold text-xs shadow-md">
                 Lv.{levelIndex}
@@ -325,7 +320,7 @@ export function DashboardClient({
                   />
                 </div>
                 <p className="mt-0.5 text-[10px] text-paper/60">
-                  {xp} XP {nextLevel && `· ${nextLevel.minXP - xp} para Lv.${levelIndex + 1}`}
+                  {xp} XP {nextLevel && ` · ${nextLevel.minXP - xp} para Lv.${levelIndex + 1}`}
                 </p>
               </div>
             </div>
@@ -336,59 +331,25 @@ export function DashboardClient({
       <section className="animate-fade-in-up rounded-xl border border-stroke/60 bg-paper/80 p-4">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs font-semibold uppercase tracking-wide text-ink/70">Periodo</span>
-          <Button
-            size="sm"
-            variant={filter.preset === "day" ? "default" : "outline"}
-            onClick={() => navigateWithPreset("day")}
-          >
-            Dia
-          </Button>
-          <Button
-            size="sm"
-            variant={filter.preset === "7d" ? "default" : "outline"}
-            onClick={() => navigateWithPreset("7d")}
-          >
-            7d
-          </Button>
-          <Button
-            size="sm"
-            variant={filter.preset === "30d" ? "default" : "outline"}
-            onClick={() => navigateWithPreset("30d")}
-          >
-            30d
-          </Button>
-          <Button
-            size="sm"
-            variant={filter.preset === "month" ? "default" : "outline"}
-            onClick={() => navigateWithPreset("month")}
-          >
-            Mes
-          </Button>
-          <Button
-            size="sm"
-            variant={filter.preset === "custom" ? "default" : "outline"}
-            onClick={() => navigateWithPreset("custom", customStart, customEnd)}
-          >
-            Personalizado
-          </Button>
+          <Button size="sm" variant={filter.preset === "day" ? "default" : "outline"} onClick={() => navigateWithPreset("day")}>Dia</Button>
+          <Button size="sm" variant={filter.preset === "7d" ? "default" : "outline"} onClick={() => navigateWithPreset("7d")}>7d</Button>
+          <Button size="sm" variant={filter.preset === "30d" ? "default" : "outline"} onClick={() => navigateWithPreset("30d")}>30d</Button>
+          <Button size="sm" variant={filter.preset === "month" ? "default" : "outline"} onClick={() => navigateWithPreset("month")}>Mes</Button>
+          <Button size="sm" variant={filter.preset === "custom" ? "default" : "outline"} onClick={() => navigateWithPreset("custom", customStart, customEnd)}>Personalizado</Button>
         </div>
-
         {filter.preset === "custom" && (
           <div className="mt-3 flex flex-wrap items-end gap-2">
             <div className="space-y-1">
               <label className="text-xs text-ink/70">Inicio</label>
-              <Input type="date" value={customStart} onChange={(event) => setCustomStart(event.target.value)} />
+              <Input type="date" value={customStart} onChange={(e) => setCustomStart(e.target.value)} />
             </div>
             <div className="space-y-1">
               <label className="text-xs text-ink/70">Fim</label>
-              <Input type="date" value={customEnd} onChange={(event) => setCustomEnd(event.target.value)} />
+              <Input type="date" value={customEnd} onChange={(e) => setCustomEnd(e.target.value)} />
             </div>
-            <Button size="sm" onClick={applyCustomRange}>
-              Aplicar
-            </Button>
+            <Button size="sm" onClick={applyCustomRange}>Aplicar</Button>
           </div>
         )}
-
         <p className="mt-3 text-xs text-ink/70">
           Exibindo de {formatRangeDate(filter.start)} ate {formatRangeDate(filter.end)}.
         </p>
@@ -403,12 +364,14 @@ export function DashboardClient({
           </CardHeader>
           <CardContent>
             <div className="flex items-center justify-between gap-3">
-              <AnimatedNumber value={saldoOrbita} className="text-xl font-bold text-ink" />
-              <Wallet className="h-4 w-4 text-vault-700" />
+              <AnimatedNumber
+                value={saldoOrbita}
+                className={cn("text-xl font-bold tabular-nums", saldoOrbita >= 0 ? "text-vault-700" : "text-destructive")}
+              />
+              <Wallet className={cn("h-4 w-4", saldoOrbita >= 0 ? "text-vault-700" : "text-destructive")} />
             </div>
           </CardContent>
         </Card>
-
         <Card className="xl:col-span-2 animate-fade-in-up stagger-2">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-ink/80">Receitas</CardTitle>
@@ -417,7 +380,6 @@ export function DashboardClient({
             <AnimatedNumber value={receitasMes} className="text-xl font-bold text-vault-700" />
           </CardContent>
         </Card>
-
         <Card className="xl:col-span-2 animate-fade-in-up stagger-3">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-ink/80">Despesas</CardTitle>
@@ -426,7 +388,6 @@ export function DashboardClient({
             <AnimatedNumber value={despesasMes} className="text-xl font-bold text-destructive" />
           </CardContent>
         </Card>
-
         <Card className="xl:col-span-4 animate-fade-in-up stagger-4">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-ink/80">Resultado</CardTitle>
@@ -438,22 +399,14 @@ export function DashboardClient({
                 className={`text-xl font-bold ${resultadoMes >= 0 ? "text-vault-700" : "text-destructive"}`}
               />
               <span
-                className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${variacaoMesAnterior <= 0
-                  ? "bg-vault-100 text-vault-800"
-                  : "bg-bronze/20 text-bronze"
-                  }`}
+                className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${variacaoMesAnterior <= 0 ? "bg-vault-100 text-vault-800" : "bg-bronze/20 text-bronze"}`}
               >
-                {variacaoMesAnterior <= 0 ? (
-                  <TrendingDown className="h-3 w-3" />
-                ) : (
-                  <TrendingUp className="h-3 w-3" />
-                )}
+                {variacaoMesAnterior <= 0 ? <TrendingDown className="h-3 w-3" /> : <TrendingUp className="h-3 w-3" />}
                 {Math.abs(variacaoMesAnterior).toFixed(1)}% vs mês anterior
               </span>
             </div>
           </CardContent>
         </Card>
-
         <Card className="xl:col-span-2 animate-fade-in-up stagger-5">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-ink/80">Média anterior</CardTitle>
@@ -500,7 +453,12 @@ export function DashboardClient({
                         />
                       </div>
                       <div className="text-xs text-ink/70">
-                        Ritmo ideal: {formatCurrency(bucket.pace_ideal)} | Projeção: {bucket.projection.toFixed(0)}%
+                        Ritmo ideal: {formatCurrency(bucket.pace_ideal)}
+                        {hasBudget
+                          ? ` | Projeção: ${((bucket.projection / bucket.budget) * 100).toFixed(0)}% do orçamento`
+                          : bucket.spend > 0
+                            ? ` | Projeção de gasto: ${formatCurrency(bucket.projection)}`
+                            : null}
                       </div>
                     </div>
                   );
@@ -511,9 +469,10 @@ export function DashboardClient({
                     <p className="font-semibold text-ink">{formatCurrency(paceIdealTotal)}</p>
                   </div>
                   <div>
-                    <p className="text-xs text-ink/70">Projeção de fechamento</p>
+                    <p className="text-xs text-ink/70">Projeção de gasto no mês</p>
                     <p className="font-semibold text-ink">
-                      {formatCurrency(projectionTotal)} ({projectionPct.toFixed(0)}%)
+                      {formatCurrency(projectionTotal)}
+                      {monthSnapshot.total_budget > 0 ? ` (${projectionPct.toFixed(0)}% do orçamento)` : " (sem orçamento)"}
                     </p>
                   </div>
                 </div>

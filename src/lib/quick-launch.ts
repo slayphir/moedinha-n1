@@ -49,7 +49,9 @@ export function parseQuickCommand(input: string): QuickTransactionDraft | null {
     .trim();
 
   const type: TransactionType =
-    /\b(receita|entrada|ganho|salario|salário)\b/i.test(raw) ? "income" : "expense";
+    /\b(receita|entrada|ganho|salario|salário|venda|vendas|faturamento|recebimento)\b/i.test(raw)
+      ? "income"
+      : "expense";
 
   return {
     amount,
@@ -57,4 +59,3 @@ export function parseQuickCommand(input: string): QuickTransactionDraft | null {
     type,
   };
 }
-

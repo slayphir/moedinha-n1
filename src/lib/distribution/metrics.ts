@@ -13,6 +13,7 @@ import {
   min as minDate,
 } from "date-fns";
 import type { MonthSnapshotBucketData } from "@/lib/types/database";
+import { attachCategoryType, sumReceitas, isDespesa, isReceita } from "@/lib/transactions/classification";
 
 const TOTAL_BPS = 10000;
 
@@ -34,6 +35,21 @@ interface ExpenseRow {
   amount: number;
 }
 
+async function getCategoryMetadata(
+  supabase: SupabaseClient,
+  orgId: string
+): Promise<{ contactPaysMeCategoryIds: Set<string>; categoryTypeById: Map<string, string> }> {
+  const { data } = await supabase
+    .from("categories")
+    .select("id, type, is_creditor_center")
+    .eq("org_id", orgId);
+
+  return {
+    contactPaysMeCategoryIds: new Set((data ?? []).filter((category) => category.is_creditor_center).map((category) => category.id)),
+    categoryTypeById: new Map((data ?? []).map((category) => [category.id, category.type])),
+  };
+}
+
 /**
  * Retorna a data do primeiro e último dia do mês (string YYYY-MM-DD).
  */
@@ -47,7 +63,7 @@ function monthRange(month: Date): { start: string; end: string } {
 }
 
 /**
- * Base de renda do mês atual (soma de receitas no mês, excluindo transferências).
+ * Base de renda do mês atual conforme a mesma regra do dashboard.
  */
 async function getCurrentMonthIncome(
   supabase: SupabaseClient,
@@ -55,21 +71,35 @@ async function getCurrentMonthIncome(
   month: Date
 ): Promise<number> {
   const { start, end } = monthRange(month);
+  const { contactPaysMeCategoryIds, categoryTypeById } = await getCategoryMetadata(supabase, orgId);
+
   const { data } = await supabase
     .from("transactions")
-    .select("amount")
+    .select("amount, type, contact_id, category_id, contact_payment_direction")
     .eq("org_id", orgId)
-    .eq("type", "income")
+    .neq("type", "transfer")
+    .in("status", ["cleared", "reconciled"])
     .gte("date", start)
     .lte("date", end)
     .is("deleted_at", null);
 
-  const total = (data ?? []).reduce((s, r) => s + Number(r.amount), 0);
-  return total;
+  return sumReceitas(
+    attachCategoryType(
+      (data ?? []) as {
+        type: string;
+        amount: number | string | null;
+        contact_id?: string | null;
+        category_id?: string | null;
+        contact_payment_direction?: string | null;
+      }[],
+      categoryTypeById
+    ),
+    contactPaysMeCategoryIds
+  );
 }
 
 /**
- * Média de receitas dos últimos N meses (excluindo transferências).
+ * Média de receitas dos últimos N meses com a mesma regra do dashboard.
  */
 async function getAvgIncome(
   supabase: SupabaseClient,
@@ -79,19 +109,36 @@ async function getAvgIncome(
 ): Promise<number> {
   const { start } = monthRange(subMonths(month, numMonths));
   const { end } = monthRange(month);
+  const { contactPaysMeCategoryIds, categoryTypeById } = await getCategoryMetadata(supabase, orgId);
+
   const { data } = await supabase
     .from("transactions")
-    .select("date, amount")
+    .select("date, amount, type, contact_id, category_id, contact_payment_direction")
     .eq("org_id", orgId)
-    .eq("type", "income")
+    .neq("type", "transfer")
+    .in("status", ["cleared", "reconciled"])
     .gte("date", start)
     .lte("date", end)
     .is("deleted_at", null);
 
+  const rows = attachCategoryType(
+    (data ?? []) as {
+      date: string;
+      amount: number | string | null;
+      type: string;
+      contact_id?: string | null;
+      category_id?: string | null;
+      contact_payment_direction?: string | null;
+    }[],
+    categoryTypeById
+  );
   const byMonth: Record<string, number> = {};
-  (data ?? []).forEach((r: { date: string; amount: number }) => {
+  rows.forEach((r) => {
     const m = r.date.slice(0, 7);
-    byMonth[m] = (byMonth[m] ?? 0) + Number(r.amount);
+    if (!byMonth[m]) byMonth[m] = 0;
+    if (isReceita(r, contactPaysMeCategoryIds)) {
+      byMonth[m] += Math.abs(Number(r.amount));
+    }
   });
   const months = Object.keys(byMonth).length || 1;
   const total = Object.values(byMonth).reduce((s, v) => s + v, 0);
@@ -173,7 +220,7 @@ export async function getActiveDistribution(
 }
 
 /**
- * Gasto por bucket no mês (apenas expense; transferências excluídas).
+ * Gasto por bucket no mês usando apenas despesas operacionais.
  */
 async function getSpendByBucket(
   supabase: SupabaseClient,
@@ -181,20 +228,34 @@ async function getSpendByBucket(
   month: Date
 ): Promise<Record<string, number>> {
   const { start, end } = monthRange(month);
+  const { contactPaysMeCategoryIds, categoryTypeById } = await getCategoryMetadata(supabase, orgId);
+
   const { data } = await supabase
     .from("transactions")
-    .select("bucket_id, amount")
+    .select("bucket_id, amount, type, contact_id, category_id, contact_payment_direction")
     .eq("org_id", orgId)
-    .eq("type", "expense")
+    .neq("type", "transfer")
+    .in("status", ["cleared", "reconciled"])
     .gte("date", start)
     .lte("date", end)
     .is("deleted_at", null);
 
   const byBucket: Record<string, number> = {};
-  (data ?? []).forEach((r: ExpenseRow) => {
-    const bid = r.bucket_id ?? "_none_";
-    byBucket[bid] = (byBucket[bid] ?? 0) + Math.abs(Number(r.amount));
-  });
+  attachCategoryType(
+    (data ?? []) as (ExpenseRow & {
+      type: string;
+      contact_id?: string | null;
+      category_id?: string | null;
+      contact_payment_direction?: string | null;
+    })[],
+    categoryTypeById
+  ).forEach(
+    (r: ExpenseRow & { type: string; contact_id?: string | null; category_id?: string | null; category_type?: string | null }) => {
+      if (!isDespesa(r, contactPaysMeCategoryIds)) return;
+      const bid = r.bucket_id ?? "_none_";
+      byBucket[bid] = (byBucket[bid] ?? 0) + Math.abs(Number(r.amount));
+    }
+  );
   return byBucket;
 }
 

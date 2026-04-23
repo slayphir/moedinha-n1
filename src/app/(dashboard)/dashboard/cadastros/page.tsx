@@ -37,7 +37,7 @@ export default async function CadastrosPage({
       .order("name"),
     supabase
       .from("categories")
-      .select("id, name, type, default_bucket_id, default_bucket:distribution_buckets(name)")
+      .select("id, name, type, default_bucket_id, is_creditor_center, default_bucket:distribution_buckets(name)")
       .eq("org_id", orgId)
       .order("name"),
     supabase.from("tags").select("id, name").eq("org_id", orgId).order("name"),
@@ -88,6 +88,7 @@ export default async function CadastrosPage({
       type: category.type,
       default_bucket_id: category.default_bucket_id,
       default_bucket_name: bucketName,
+      is_creditor_center: (category as { is_creditor_center?: boolean }).is_creditor_center ?? false,
     };
   });
 

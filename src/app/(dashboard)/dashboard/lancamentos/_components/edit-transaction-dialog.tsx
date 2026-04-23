@@ -252,7 +252,7 @@ export function EditTransactionDialog({
           <DialogDescription>Faca alteracoes no lancamento selecionado.</DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="flex min-h-0 flex-1 flex-col">
+        <form id="edit-tx-form" onSubmit={handleSubmit(onSubmit)} className="flex min-h-0 flex-1 flex-col">
           <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-2">
           {hasInstallmentSeries && installmentMeta && (
             <div className="space-y-3 rounded-md border border-stroke bg-paper/60 p-3">
@@ -455,56 +455,56 @@ export function EditTransactionDialog({
             )}
           </div>
           </div>
+        </form>
 
-          <DialogFooter className="gap-2 border-t border-stroke/60 bg-background px-6 py-4 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:justify-between">
-            {deleteConfirmOpen ? (
-              <div className="flex w-full flex-col gap-2 rounded-md border border-destructive/20 bg-destructive/10 px-4 py-2 sm:flex-row sm:items-center sm:justify-between">
-                <span className="text-sm font-medium text-destructive">Tem certeza?</span>
-                <div className="flex gap-2">
-                  <Button type="button" variant="ghost" size="sm" onClick={() => setDeleteConfirmOpen(false)}>
-                    Cancelar
-                  </Button>
-                  <Button type="button" variant="destructive" size="sm" onClick={handleDelete} disabled={loading}>
-                    {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Sim, excluir"}
-                  </Button>
-                </div>
+        <DialogFooter className="flex-shrink-0 gap-2 border-t border-stroke/60 bg-background px-6 py-4 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:justify-between">
+          {deleteConfirmOpen ? (
+            <div className="flex w-full flex-col gap-2 rounded-md border border-destructive/20 bg-destructive/10 px-4 py-2 sm:flex-row sm:items-center sm:justify-between">
+              <span className="text-sm font-medium text-destructive">Tem certeza?</span>
+              <div className="flex gap-2">
+                <Button type="button" variant="ghost" size="sm" onClick={() => setDeleteConfirmOpen(false)}>
+                  Cancelar
+                </Button>
+                <Button type="button" variant="destructive" size="sm" onClick={handleDelete} disabled={loading}>
+                  {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Sim, excluir"}
+                </Button>
               </div>
-            ) : (
-              <div className="flex items-center gap-2">
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="border-destructive/50 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                onClick={() => setDeleteConfirmOpen(true)}
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                Excluir
+              </Button>
+              {hasInstallmentSeries && (
                 <Button
                   type="button"
                   variant="ghost"
-                  className="text-muted-foreground hover:text-destructive"
-                  onClick={() => setDeleteConfirmOpen(true)}
+                  className="text-destructive hover:text-destructive"
+                  onClick={handleDeleteInstallment}
+                  disabled={loading}
                 >
                   <Trash2 className="mr-2 h-4 w-4" />
-                  Excluir
+                  Excluir parcelamento
                 </Button>
-                {hasInstallmentSeries && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    className="text-destructive hover:text-destructive"
-                    onClick={handleDeleteInstallment}
-                    disabled={loading}
-                  >
-                    <Trash2 className="mr-2 h-4 w-4" />
-                    Excluir parcelamento
-                  </Button>
-                )}
-              </div>
-            )}
-
-            <div className="flex gap-2">
-              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-                Cancelar
-              </Button>
-              <Button type="submit" disabled={loading}>
-                {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Salvar alteracoes"}
-              </Button>
+              )}
             </div>
-          </DialogFooter>
-        </form>
+          )}
+
+          <div className="flex gap-2">
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+              Cancelar
+            </Button>
+            <Button type="submit" form="edit-tx-form" disabled={loading}>
+              {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Salvar alteracoes"}
+            </Button>
+          </div>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

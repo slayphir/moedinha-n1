@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
@@ -21,7 +21,8 @@ import { EditAccountDialog } from "./edit-account-dialog";
 import { EditCategoryDialog } from "./edit-category-dialog";
 import { EditTagDialog } from "./edit-tag-dialog";
 import { Contact } from "@/hooks/use-financial-data";
-import { formatCurrency } from "@/lib/utils";
+import { getPaymentReliabilityLabel, getPaymentReliabilityBadgeClass } from "@/lib/payment-reliability";
+import { formatCurrency, cn } from "@/lib/utils";
 import { CircleDollarSign, FolderOpen, Loader2, Pencil, Plus, Search, Tag, Users, Wallet, WandSparkles } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -74,7 +75,7 @@ type IncomeRunRow = {
 
 type Props = {
   accounts: AccountRow[];
-  categories: { id: string; name: string; type: string; default_bucket_id?: string | null; default_bucket_name?: string | null }[];
+  categories: { id: string; name: string; type: string; default_bucket_id?: string | null; default_bucket_name?: string | null; is_creditor_center?: boolean }[];
   buckets: { id: string; name: string }[];
   tags: { id: string; name: string }[];
   contacts: Contact[];
@@ -179,6 +180,7 @@ export function CadastrosClient({
     type: string;
     default_bucket_id?: string | null;
     default_bucket_name?: string | null;
+    is_creditor_center?: boolean;
   } | null>(null);
   const [editingTag, setEditingTag] = useState<{ id: string; name: string } | null>(null);
   const [editingContact, setEditingContact] = useState<Contact | null>(null);
@@ -1114,6 +1116,7 @@ export function CadastrosClient({
                           </span>
                           <span className="text-xs text-muted-foreground">
                             Bucket padrao: {category.default_bucket_name ?? "Nao definido"}
+                            {category.is_creditor_center && " • Esta pessoa me paga"}
                           </span>
                         </div>
 
@@ -1363,8 +1366,20 @@ export function CadastrosClient({
                 <ul className="space-y-2">
                   {contacts.map((contact) => (
                     <li key={contact.id} className="flex items-center justify-between rounded border p-2">
-                      <div className="flex flex-col">
-                        <span className="font-medium">{contact.name}</span>
+                      <div className="flex flex-col gap-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-medium">{contact.name}</span>
+                          {contact.payment_reliability && (
+                            <span
+                              className={cn(
+                                "inline-flex rounded border px-2 py-0.5 text-xs font-medium",
+                                getPaymentReliabilityBadgeClass(contact.payment_reliability)
+                              )}
+                            >
+                              {getPaymentReliabilityLabel(contact.payment_reliability)}
+                            </span>
+                          )}
+                        </div>
                         <span className="text-xs text-muted-foreground">
                           {contact.relationship || "Outro"}
                           {contact.phone ? ` - ${contact.phone}` : ""}
