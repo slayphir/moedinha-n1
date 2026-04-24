@@ -25,7 +25,6 @@ import {
   isDespesa,
   isReceita,
   sumDespesas,
-  sumDespesasCompromissosForecast,
   sumReceitas,
 } from "@/lib/transactions/classification";
 
@@ -72,14 +71,15 @@ async function getCategoryMetadata(
 }
 
 /**
- * Retorna a data do primeiro e último dia do mês (string YYYY-MM-DD).
+ * Retorna o primeiro e último dia do mês em YYYY-MM-DD no **calendário local**
+ * (evita deslocamento para o dia anterior/posterior que ocorre com toISOString/UTC).
  */
 function monthRange(month: Date): { start: string; end: string } {
   const start = startOfMonth(month);
   const end = endOfMonth(month);
   return {
-    start: start.toISOString().slice(0, 10),
-    end: end.toISOString().slice(0, 10),
+    start: format(start, "yyyy-MM-dd"),
+    end: format(end, "yyyy-MM-dd"),
   };
 }
 
@@ -435,7 +435,7 @@ export async function computeMonthlyMetrics(
 
   const base_income_mode = active.distribution.base_income_mode as BaseIncomeMode;
 
-  const monthStr = month.toISOString().slice(0, 10);
+  const monthStr = format(startOfMonth(month), "yyyy-MM-dd");
   await supabase.from("month_snapshots").upsert(
     {
       org_id: orgId,
@@ -641,66 +641,25 @@ async function resultadoOperacionalMesRealizado(
   };
 }
 
+/**
+ * Total de compromissos por transações via RPC Postgres (mesma regra que consulta manual no SQL Editor).
+ * Requer migration `00018_forecast_commitments_tx_total.sql`.
+ */
 async function totalDespesasCompromissosNoMes(
   supabase: SupabaseClient,
   orgId: string,
   month: Date
 ): Promise<number> {
-  const { start, end } = monthRange(month);
-  const { categoryTypeById } = await getCategoryMetadata(supabase, orgId);
-
-  const baseSelect =
-    "id, amount, type, date, due_date, contact_id, category_id, contact_payment_direction";
-
-  const { data: comVencimento } = await supabase
-    .from("transactions")
-    .select(baseSelect)
-    .eq("org_id", orgId)
-    .eq("type", "expense")
-    .in("status", [...FORECAST_TX_STATUSES])
-    .not("due_date", "is", null)
-    .gte("due_date", start)
-    .lte("due_date", end)
-    .is("deleted_at", null);
-
-  const { data: avistaNoMes } = await supabase
-    .from("transactions")
-    .select(baseSelect)
-    .eq("org_id", orgId)
-    .eq("type", "expense")
-    .in("status", [...FORECAST_TX_STATUSES])
-    .is("due_date", null)
-    .gte("date", start)
-    .lte("date", end)
-    .is("deleted_at", null);
-
-  type Row = {
-    id: string;
-    amount: number | string | null;
-    type: string;
-    contact_id?: string | null;
-    category_id?: string | null;
-    contact_payment_direction?: string | null;
-  };
-  const seenId = new Set<string>();
-  const merged: Row[] = [];
-  for (const row of [...(comVencimento ?? []), ...(avistaNoMes ?? [])] as Row[]) {
-    if (seenId.has(row.id)) continue;
-    seenId.add(row.id);
-    merged.push(row);
+  const pMonth = format(startOfMonth(month), "yyyy-MM-dd");
+  const { data, error } = await supabase.rpc("forecast_commitments_tx_total", {
+    p_org_id: orgId,
+    p_month: pMonth,
+  });
+  if (error) {
+    console.error("forecast_commitments_tx_total", error);
+    throw error;
   }
-  return sumDespesasCompromissosForecast(
-    attachCategoryType(
-      merged as {
-        amount: number | string | null;
-        type: string;
-        contact_id?: string | null;
-        category_id?: string | null;
-        contact_payment_direction?: string | null;
-      }[],
-      categoryTypeById
-    )
-  );
+  return finiteNumber(Number(data ?? 0));
 }
 
 export type NextMonthForecast = {

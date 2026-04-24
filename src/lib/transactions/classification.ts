@@ -107,12 +107,3 @@ export function sumDespesas(
     .reduce((s, t) => s + Math.abs(Number(t.amount)), 0);
 }
 
-/**
- * Soma valores de despesa para previsto por vencimento (`due_date` / à vista).
- * Inclui acertos com terceiros e centro credor, que `sumDespesas` deixa de fora.
- */
-export function sumDespesasCompromissosForecast(transactions: TxForClassification[]): number {
-  return transactions
-    .filter((t) => t.type === "expense" && t.category_type !== "income")
-    .reduce((s, t) => s + Math.abs(Number(t.amount)), 0);
-}
