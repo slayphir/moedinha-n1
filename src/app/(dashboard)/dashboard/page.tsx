@@ -380,10 +380,16 @@ export default async function DashboardPage({
     const nm = startOfMonth(addMonths(now, 1));
     nextMonthForecast = {
       monthLabel: new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric" }).format(nm),
+      mesBaseLabel: new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric" }).format(startOfMonth(now)),
       receitaPrevista: 0,
+      despesaCompromissosMes: 0,
       despesaMedia3m: 0,
-      resultadoPrevisto: 0,
+      despesaProjetada: 0,
+      resultadoMesBase: 0,
+      fluxoProximoMes: 0,
+      saldoProjetado: 0,
       incomeSource: "historical_avg",
+      expenseBasis: "media_3m",
     };
   }
 

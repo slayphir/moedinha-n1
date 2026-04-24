@@ -486,25 +486,136 @@ async function totalDespesasOperacionaisMonthForecast(
   );
 }
 
+/**
+ * Compromissos “do mês”: fatura/vencimento naquele mês (due_date),
+ * mais despesas à vista sem vencimento cuja data do lançamento cai no mês.
+ */
+/**
+ * Resultado operacional realizado no mês (receitas − despesas), mesma regra do dashboard.
+ */
+async function resultadoOperacionalMesRealizado(
+  supabase: SupabaseClient,
+  orgId: string,
+  month: Date
+): Promise<{ receitas: number; despesas: number; resultado: number }> {
+  const { start, end } = monthRange(month);
+  const { contactPaysMeCategoryIds, categoryTypeById } = await getCategoryMetadata(supabase, orgId);
+  const { data } = await supabase
+    .from("transactions")
+    .select("amount, type, contact_id, category_id, contact_payment_direction")
+    .eq("org_id", orgId)
+    .neq("type", "transfer")
+    .in("status", ["cleared", "reconciled"])
+    .gte("date", start)
+    .lte("date", end)
+    .is("deleted_at", null);
+  const rows = attachCategoryType(
+    (data ?? []) as {
+      amount: number | string | null;
+      type: string;
+      contact_id?: string | null;
+      category_id?: string | null;
+      contact_payment_direction?: string | null;
+    }[],
+    categoryTypeById
+  );
+  const receitas = sumReceitas(rows, contactPaysMeCategoryIds);
+  const despesas = sumDespesas(rows, contactPaysMeCategoryIds);
+  return {
+    receitas,
+    despesas,
+    resultado: finiteNumber(receitas - despesas),
+  };
+}
+
+async function totalDespesasCompromissosNoMes(
+  supabase: SupabaseClient,
+  orgId: string,
+  month: Date
+): Promise<number> {
+  const { start, end } = monthRange(month);
+  const { contactPaysMeCategoryIds, categoryTypeById } = await getCategoryMetadata(supabase, orgId);
+
+  const baseSelect =
+    "amount, type, date, due_date, contact_id, category_id, contact_payment_direction";
+
+  const { data: comVencimento } = await supabase
+    .from("transactions")
+    .select(baseSelect)
+    .eq("org_id", orgId)
+    .eq("type", "expense")
+    .in("status", [...FORECAST_TX_STATUSES])
+    .not("due_date", "is", null)
+    .gte("due_date", start)
+    .lte("due_date", end)
+    .is("deleted_at", null);
+
+  const { data: avistaNoMes } = await supabase
+    .from("transactions")
+    .select(baseSelect)
+    .eq("org_id", orgId)
+    .eq("type", "expense")
+    .in("status", [...FORECAST_TX_STATUSES])
+    .is("due_date", null)
+    .gte("date", start)
+    .lte("date", end)
+    .is("deleted_at", null);
+
+  const merged = [...(comVencimento ?? []), ...(avistaNoMes ?? [])];
+  return sumDespesas(
+    attachCategoryType(
+      merged as {
+        amount: number | string | null;
+        type: string;
+        contact_id?: string | null;
+        category_id?: string | null;
+        contact_payment_direction?: string | null;
+      }[],
+      categoryTypeById
+    ),
+    contactPaysMeCategoryIds
+  );
+}
+
 export type NextMonthForecast = {
+  /** Próximo mês civil (alvo do previsto). */
   monthLabel: string;
+  /** Mês “de onde vem a sobra”: o mês civil anterior ao próximo (= mês atual da referência). */
+  mesBaseLabel: string;
   receitaPrevista: number;
+  /** Soma com vencimento (due_date) ou à vista com data no mês. */
+  despesaCompromissosMes: number;
   despesaMedia3m: number;
-  resultadoPrevisto: number;
+  /** Despesa usada no cálculo (compromissos do próximo mês ou média 3m). */
+  despesaProjetada: number;
+  /**
+   * Sobra do mês anterior ao próximo: receitas − despesas operacionais realizadas (cleared/reconciled)
+   * no mês civil atual em relação à data âncora.
+   */
+  resultadoMesBase: number;
+  /** Receita prevista − despesa projetada (sem incluir a sobra do mês base). */
+  fluxoProximoMes: number;
+  /** resultadoMesBase + receita prevista − despesa projetada. */
+  saldoProjetado: number;
   incomeSource: "distribution" | "historical_avg";
+  /** Qual base foi usada na despesa projetada. */
+  expenseBasis: "compromissos_mes" | "media_3m";
 };
 
 /**
- * Estimativa para o próximo mês civil: receita (modo da distribuição ou média 3m)
- * menos média das despesas operacionais dos 3 meses anteriores ao mês corrente.
+ * Estimativa para o próximo mês civil: receita (distribuição ou média 3m)
+ * menos **compromissos daquele mês** (due_date no mês + à vista com data no mês).
+ * Se não houver nenhum compromisso identificado, usa a média de despesas dos 3 meses anteriores.
  */
 export async function computeNextMonthForecast(
   supabase: SupabaseClient,
   orgId: string,
   anchorDate: Date
 ): Promise<NextMonthForecast> {
+  const mesBase = startOfMonth(anchorDate);
   const nextMonth = startOfMonth(addMonths(anchorDate, 1));
   const monthLabel = new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric" }).format(nextMonth);
+  const mesBaseLabel = new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric" }).format(mesBase);
 
   const active = await getActiveDistribution(supabase, orgId, nextMonth);
   let receitaPrevista: number;
@@ -524,15 +635,29 @@ export async function computeNextMonthForecast(
   }
   const despesaMedia3m = sumDesp / 3;
 
+  const despesaCompromissosMes = await totalDespesasCompromissosNoMes(supabase, orgId, nextMonth);
+  const temCompromissos = despesaCompromissosMes > 0;
+  const despesaProjetada = finiteNumber(temCompromissos ? despesaCompromissosMes : despesaMedia3m);
+
   receitaPrevista = finiteNumber(receitaPrevista);
   const despesaMedia3mF = finiteNumber(despesaMedia3m);
-  const resultadoPrevisto = finiteNumber(receitaPrevista - despesaMedia3mF);
+  const despesaCompromissosF = finiteNumber(despesaCompromissosMes);
+
+  const { resultado: resultadoMesBase } = await resultadoOperacionalMesRealizado(supabase, orgId, mesBase);
+  const fluxoProximoMes = finiteNumber(receitaPrevista - despesaProjetada);
+  const saldoProjetado = finiteNumber(resultadoMesBase + fluxoProximoMes);
 
   return {
     monthLabel,
+    mesBaseLabel,
     receitaPrevista,
+    despesaCompromissosMes: despesaCompromissosF,
     despesaMedia3m: despesaMedia3mF,
-    resultadoPrevisto,
+    despesaProjetada,
+    resultadoMesBase,
+    fluxoProximoMes,
+    saldoProjetado,
     incomeSource,
+    expenseBasis: temCompromissos ? "compromissos_mes" : "media_3m",
   };
 }

@@ -104,10 +104,16 @@ type DashboardClientProps = {
   gamification: GamificationStats;
   nextMonthForecast: {
     monthLabel: string;
+    mesBaseLabel: string;
     receitaPrevista: number;
+    despesaCompromissosMes: number;
     despesaMedia3m: number;
-    resultadoPrevisto: number;
+    despesaProjetada: number;
+    resultadoMesBase: number;
+    fluxoProximoMes: number;
+    saldoProjetado: number;
     incomeSource: "distribution" | "historical_avg";
+    expenseBasis: "compromissos_mes" | "media_3m";
   };
 };
 
@@ -426,24 +432,40 @@ export function DashboardClient({
         </Card>
         <Card className="xl:col-span-2 animate-fade-in-up stagger-5">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-ink/80">Previsto próximo mês</CardTitle>
+            <CardTitle className="text-sm font-medium text-ink/80">Visão do próximo mês</CardTitle>
             <p className="text-[10px] font-normal capitalize leading-tight text-ink/60">
               {nextMonthForecast.monthLabel}
             </p>
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
+              <p className="text-[10px] font-medium uppercase tracking-wide text-ink/50">Saldo projetado</p>
               <div className="flex items-center justify-between gap-2">
                 <AnimatedNumber
-                  value={Number.isFinite(nextMonthForecast.resultadoPrevisto) ? nextMonthForecast.resultadoPrevisto : 0}
-                  className={`text-lg font-bold tabular-nums ${nextMonthForecast.resultadoPrevisto >= 0 ? "text-vault-700" : "text-destructive"}`}
+                  value={Number.isFinite(nextMonthForecast.saldoProjetado) ? nextMonthForecast.saldoProjetado : 0}
+                  className={`text-lg font-bold tabular-nums ${nextMonthForecast.saldoProjetado >= 0 ? "text-vault-700" : "text-destructive"}`}
                 />
                 <CalendarClock className="h-4 w-4 shrink-0 text-ink/45" />
               </div>
               <p className="text-[10px] leading-snug text-ink/55">
-                Rec. {formatCurrency(nextMonthForecast.receitaPrevista)}
-                {nextMonthForecast.incomeSource === "distribution" ? " (distrib.)" : " (méd. 3m)"} · Desp.{" "}
-                {formatCurrency(nextMonthForecast.despesaMedia3m)} (méd. 3m)
+                <span className="text-ink/65">Receita prevista:</span> {formatCurrency(nextMonthForecast.receitaPrevista)}
+                {nextMonthForecast.incomeSource === "distribution" ? " (distrib.)" : " (méd. 3m)"}
+                <br />
+                <span className="text-ink/65">Despesa projetada:</span> {formatCurrency(nextMonthForecast.despesaProjetada)}
+                {nextMonthForecast.expenseBasis === "compromissos_mes" ? (
+                  <span className="text-ink/45"> — venc./mês (fatura e à vista na data)</span>
+                ) : (
+                  <span className="text-ink/45"> — média 3 meses</span>
+                )}
+                <br />
+                <span className="text-ink/65">Sobra {nextMonthForecast.mesBaseLabel}:</span>{" "}
+                {formatCurrency(nextMonthForecast.resultadoMesBase)}{" "}
+                <span className="text-ink/45">(realizado no mês)</span>
+                <br />
+                <span className="text-ink/45">
+                  {formatCurrency(nextMonthForecast.resultadoMesBase)} + {formatCurrency(nextMonthForecast.receitaPrevista)} −{" "}
+                  {formatCurrency(nextMonthForecast.despesaProjetada)} = {formatCurrency(nextMonthForecast.saldoProjetado)}
+                </span>
               </p>
             </div>
           </CardContent>
