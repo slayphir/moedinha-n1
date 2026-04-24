@@ -25,6 +25,7 @@ import {
   isDespesa,
   isReceita,
   sumDespesas,
+  sumDespesasCompromissosForecast,
   sumReceitas,
 } from "@/lib/transactions/classification";
 
@@ -519,10 +520,13 @@ async function totalRecurringExpenseProjectedInMonth(
 
   if (!rules?.length) return 0;
 
+  const ruleIds = rules.map((r) => r.id);
+
   const { data: lastRuns } = await supabase
     .from("recurring_runs")
     .select("rule_id, run_at")
-    .eq("success", true);
+    .eq("success", true)
+    .in("rule_id", ruleIds);
 
   const lastRunMap: Record<string, Date> = {};
   (lastRuns ?? []).forEach((run: { rule_id: string; run_at: string }) => {
@@ -532,23 +536,40 @@ async function totalRecurringExpenseProjectedInMonth(
     }
   });
 
-  const { data: txsWithMeta } = await supabase
+  const metaSelect = "date, due_date, metadata";
+  const { data: txsMetaByDate } = await supabase
     .from("transactions")
-    .select("date, metadata")
+    .select(metaSelect)
     .eq("org_id", orgId)
     .gte("date", start)
     .lte("date", end)
     .is("deleted_at", null)
     .not("metadata", "is", null);
 
+  const { data: txsMetaByDue } = await supabase
+    .from("transactions")
+    .select(metaSelect)
+    .eq("org_id", orgId)
+    .not("due_date", "is", null)
+    .gte("due_date", start)
+    .lte("due_date", end)
+    .is("deleted_at", null)
+    .not("metadata", "is", null);
+
   const coveredByGeneratedTx = new Set<string>();
-  for (const t of txsWithMeta ?? []) {
+  const addCoverage = (t: { date?: string | null; due_date?: string | null; metadata?: unknown }) => {
     const meta = t.metadata as { recurring_rule_id?: string } | null | undefined;
     const rid = meta?.recurring_rule_id;
-    if (rid && typeof t.date === "string") {
-      coveredByGeneratedTx.add(`${rid}|${t.date}`);
+    if (!rid) return;
+    if (typeof t.date === "string" && t.date.length >= 10) {
+      coveredByGeneratedTx.add(`${rid}|${t.date.slice(0, 10)}`);
     }
-  }
+    if (typeof t.due_date === "string" && t.due_date.length >= 10) {
+      coveredByGeneratedTx.add(`${rid}|${t.due_date.slice(0, 10)}`);
+    }
+  };
+  for (const t of txsMetaByDate ?? []) addCoverage(t);
+  for (const t of txsMetaByDue ?? []) addCoverage(t);
 
   let total = 0;
   const ruleRows = rules as Pick<RecurringRule, "id" | "amount" | "frequency" | "start_date" | "end_date">[];
@@ -626,10 +647,10 @@ async function totalDespesasCompromissosNoMes(
   month: Date
 ): Promise<number> {
   const { start, end } = monthRange(month);
-  const { contactPaysMeCategoryIds, categoryTypeById } = await getCategoryMetadata(supabase, orgId);
+  const { categoryTypeById } = await getCategoryMetadata(supabase, orgId);
 
   const baseSelect =
-    "amount, type, date, due_date, contact_id, category_id, contact_payment_direction";
+    "id, amount, type, date, due_date, contact_id, category_id, contact_payment_direction";
 
   const { data: comVencimento } = await supabase
     .from("transactions")
@@ -653,8 +674,22 @@ async function totalDespesasCompromissosNoMes(
     .lte("date", end)
     .is("deleted_at", null);
 
-  const merged = [...(comVencimento ?? []), ...(avistaNoMes ?? [])];
-  return sumDespesas(
+  type Row = {
+    id: string;
+    amount: number | string | null;
+    type: string;
+    contact_id?: string | null;
+    category_id?: string | null;
+    contact_payment_direction?: string | null;
+  };
+  const seenId = new Set<string>();
+  const merged: Row[] = [];
+  for (const row of [...(comVencimento ?? []), ...(avistaNoMes ?? [])] as Row[]) {
+    if (seenId.has(row.id)) continue;
+    seenId.add(row.id);
+    merged.push(row);
+  }
+  return sumDespesasCompromissosForecast(
     attachCategoryType(
       merged as {
         amount: number | string | null;
@@ -664,8 +699,7 @@ async function totalDespesasCompromissosNoMes(
         contact_payment_direction?: string | null;
       }[],
       categoryTypeById
-    ),
-    contactPaysMeCategoryIds
+    )
   );
 }
 
