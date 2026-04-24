@@ -32,6 +32,16 @@ function parseIsoDate(value: string | undefined): Date | null {
   return parsed;
 }
 
+/** Primeiro dia do mês a partir de YYYY-MM (URL). */
+function parseYearMonth(value: string | undefined): Date | null {
+  if (!value || !/^\d{4}-\d{2}$/.test(value)) return null;
+  const y = Number(value.slice(0, 4));
+  const m = Number(value.slice(5, 7));
+  if (!Number.isFinite(y) || m < 1 || m > 12) return null;
+  const d = new Date(y, m - 1, 1);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
 function toDateOnly(value: Date) {
   return value.toISOString().slice(0, 10);
 }
@@ -85,10 +95,12 @@ export default async function DashboardPage({
 
   const now = atStartOfDay(new Date());
   const rawPreset = typeof searchParams.preset === "string" ? searchParams.preset : undefined;
+  const rawMonthYm = typeof searchParams.month === "string" ? searchParams.month : undefined;
   const startParam = typeof searchParams.start === "string" ? searchParams.start : undefined;
   const endParam = typeof searchParams.end === "string" ? searchParams.end : undefined;
   const parsedStart = parseIsoDate(startParam);
   const parsedEnd = parseIsoDate(endParam);
+  const parsedMonthFromQuery = parseYearMonth(rawMonthYm);
 
   let selectedPreset: DashboardFilterPreset = "month";
   if (rawPreset === "day" || rawPreset === "7d" || rawPreset === "30d" || rawPreset === "month" || rawPreset === "custom") {
@@ -112,6 +124,10 @@ export default async function DashboardPage({
   } else if (selectedPreset === "custom" && parsedStart && parsedEnd) {
     rangeStart = parsedStart;
     rangeEnd = parsedEnd;
+  } else if (selectedPreset === "month") {
+    const anchor = parsedMonthFromQuery ?? startOfMonth(now);
+    rangeStart = startOfMonth(anchor);
+    rangeEnd = endOfMonth(anchor);
   }
 
   if (rangeStart.getTime() > rangeEnd.getTime()) {
@@ -372,15 +388,18 @@ export default async function DashboardPage({
 
   const goals = await getGoals();
 
+  /** No modo mês, o previsto refere-se ao mês seguinte ao período visualizado; nos demais, usa o mês civil atual. */
+  const forecastAnchor = selectedPreset === "month" ? startOfMonth(rangeStart) : now;
+
   let nextMonthForecast: NextMonthForecast;
   try {
-    nextMonthForecast = await computeNextMonthForecast(supabase, orgId, now);
+    nextMonthForecast = await computeNextMonthForecast(supabase, orgId, forecastAnchor);
   } catch (forecastError) {
     console.error("Error computing next month forecast:", forecastError);
-    const nm = startOfMonth(addMonths(now, 1));
+    const nm = startOfMonth(addMonths(forecastAnchor, 1));
     nextMonthForecast = {
       monthLabel: new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric" }).format(nm),
-      mesBaseLabel: new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric" }).format(startOfMonth(now)),
+      mesBaseLabel: new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric" }).format(startOfMonth(forecastAnchor)),
       receitaPrevista: 0,
       compromissosTransacoesMes: 0,
       compromissosRecorrenciasMes: 0,
@@ -426,6 +445,7 @@ export default async function DashboardPage({
         preset: selectedPreset,
         start: selectedStartIso,
         end: selectedEndIso,
+        monthYear: selectedPreset === "month" ? selectedStartIso.slice(0, 7) : undefined,
       }}
       gamification={{
         accountCount: accounts?.length ?? 0,

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import { addMonths, parseISO, startOfMonth } from "date-fns";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,6 +26,8 @@ import {
   AlertTriangle,
   ArrowRight,
   CalendarClock,
+  ChevronLeft,
+  ChevronRight,
   Sparkles,
   Target,
   TrendingDown,
@@ -100,6 +103,8 @@ type DashboardClientProps = {
     preset: DashboardFilterPreset;
     start: string;
     end: string;
+    /** YYYY-MM quando o período é um mês civil completo */
+    monthYear?: string;
   };
   gamification: GamificationStats;
   nextMonthForecast: {
@@ -184,6 +189,10 @@ function formatRangeDate(isoDate: string): string {
   return `${isoDate.slice(8, 10)}/${isoDate.slice(5, 7)}/${isoDate.slice(0, 4)}`;
 }
 
+function localYearMonth(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
 function formatCompactTick(value: number): string {
   const abs = Math.abs(value);
   if (!Number.isFinite(value)) return "0";
@@ -229,10 +238,20 @@ export function DashboardClient({
     const params = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
 
     if (nextPreset === "month") {
-      params.delete("preset");
-    } else {
-      params.set("preset", nextPreset);
+      params.set("preset", "month");
+      params.delete("start");
+      params.delete("end");
+      const ym =
+        filter.preset === "month"
+          ? (filter.monthYear ?? filter.start.slice(0, 7))
+          : localYearMonth(new Date());
+      params.set("month", ym);
+      router.push(`${pathname}?${params.toString()}`);
+      return;
     }
+
+    params.set("preset", nextPreset);
+    params.delete("month");
 
     if (nextPreset === "custom" && start && end) {
       params.set("start", start);
@@ -245,6 +264,24 @@ export function DashboardClient({
     const query = params.toString();
     router.push(query ? `${pathname}?${query}` : pathname);
   }
+
+  function navigateMonth(delta: number) {
+    const ym = filter.monthYear ?? filter.start.slice(0, 7);
+    const base = parseISO(`${ym}-01T12:00:00`);
+    const moved = addMonths(startOfMonth(base), delta);
+    const nextYm = `${moved.getFullYear()}-${String(moved.getMonth() + 1).padStart(2, "0")}`;
+    const params = new URLSearchParams();
+    params.set("preset", "month");
+    params.set("month", nextYm);
+    router.push(`${pathname}?${params.toString()}`);
+  }
+
+  const monthNavLabel = useMemo(() => {
+    if (filter.preset !== "month") return "";
+    const d = parseISO(`${filter.start}T12:00:00`);
+    const raw = new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric" }).format(d);
+    return raw.charAt(0).toUpperCase() + raw.slice(1);
+  }, [filter.preset, filter.start]);
 
   function applyCustomRange() {
     if (!customStart || !customEnd) return;
@@ -362,6 +399,17 @@ export function DashboardClient({
           <Button size="sm" variant={filter.preset === "month" ? "default" : "outline"} onClick={() => navigateWithPreset("month")}>Mes</Button>
           <Button size="sm" variant={filter.preset === "custom" ? "default" : "outline"} onClick={() => navigateWithPreset("custom", customStart, customEnd)}>Personalizado</Button>
         </div>
+        {filter.preset === "month" && (
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <Button type="button" size="sm" variant="outline" className="h-8 px-2" onClick={() => navigateMonth(-1)} aria-label="Mês anterior">
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <span className="min-w-[160px] text-center text-sm font-semibold capitalize tabular-nums text-ink">{monthNavLabel}</span>
+            <Button type="button" size="sm" variant="outline" className="h-8 px-2" onClick={() => navigateMonth(1)} aria-label="Próximo mês">
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
         {filter.preset === "custom" && (
           <div className="mt-3 flex flex-wrap items-end gap-2">
             <div className="space-y-1">
