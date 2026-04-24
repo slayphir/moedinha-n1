@@ -6,14 +6,20 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   addMonths,
+  addWeeks,
+  addYears,
   endOfMonth,
+  format,
   getDaysInMonth,
+  isAfter,
+  isBefore,
   min as minDate,
+  parseISO,
   startOfMonth,
   subMonths,
   differenceInDays,
 } from "date-fns";
-import type { MonthSnapshotBucketData } from "@/lib/types/database";
+import type { MonthSnapshotBucketData, RecurringRule } from "@/lib/types/database";
 import {
   attachCategoryType,
   isDespesa,
@@ -486,10 +492,96 @@ async function totalDespesasOperacionaisMonthForecast(
   );
 }
 
+function addFrequencyForRule(date: Date, freq: RecurringRule["frequency"]): Date {
+  if (freq === "weekly") return addWeeks(date, 1);
+  if (freq === "yearly") return addYears(date, 1);
+  return addMonths(date, 1);
+}
+
 /**
- * Compromissos “do mês”: fatura/vencimento naquele mês (due_date),
- * mais despesas à vista sem vencimento cuja data do lançamento cai no mês.
+ * Recorrências ativas com ocorrência no mês que ainda não geraram lançamento naquele período.
+ * Mesma cadência que calendário/projeção; evita duplicar quando já existe tx com metadata.recurring_rule_id.
  */
+async function totalRecurringExpenseProjectedInMonth(
+  supabase: SupabaseClient,
+  orgId: string,
+  month: Date
+): Promise<number> {
+  const { start, end } = monthRange(month);
+  const startDate = parseISO(`${start}T12:00:00`);
+  const endDate = parseISO(`${end}T12:00:00`);
+
+  const { data: rules } = await supabase
+    .from("recurring_rules")
+    .select("id, amount, frequency, start_date, end_date")
+    .eq("org_id", orgId)
+    .eq("is_active", true);
+
+  if (!rules?.length) return 0;
+
+  const { data: lastRuns } = await supabase
+    .from("recurring_runs")
+    .select("rule_id, run_at")
+    .eq("success", true);
+
+  const lastRunMap: Record<string, Date> = {};
+  (lastRuns ?? []).forEach((run: { rule_id: string; run_at: string }) => {
+    const d = parseISO(run.run_at);
+    if (!lastRunMap[run.rule_id] || d.getTime() > lastRunMap[run.rule_id].getTime()) {
+      lastRunMap[run.rule_id] = d;
+    }
+  });
+
+  const { data: txsWithMeta } = await supabase
+    .from("transactions")
+    .select("date, metadata")
+    .eq("org_id", orgId)
+    .gte("date", start)
+    .lte("date", end)
+    .is("deleted_at", null)
+    .not("metadata", "is", null);
+
+  const coveredByGeneratedTx = new Set<string>();
+  for (const t of txsWithMeta ?? []) {
+    const meta = t.metadata as { recurring_rule_id?: string } | null | undefined;
+    const rid = meta?.recurring_rule_id;
+    if (rid && typeof t.date === "string") {
+      coveredByGeneratedTx.add(`${rid}|${t.date}`);
+    }
+  }
+
+  let total = 0;
+  const ruleRows = rules as Pick<RecurringRule, "id" | "amount" | "frequency" | "start_date" | "end_date">[];
+  for (const ruleRow of ruleRows) {
+    const ruleEnd = ruleRow.end_date ? parseISO(ruleRow.end_date) : null;
+    if (ruleEnd && isBefore(ruleEnd, startDate)) continue;
+
+    const ruleStart = parseISO(ruleRow.start_date);
+    if (isAfter(ruleStart, endDate)) continue;
+
+    let target = lastRunMap[ruleRow.id]
+      ? addFrequencyForRule(lastRunMap[ruleRow.id], ruleRow.frequency)
+      : ruleStart;
+
+    while (isBefore(target, startDate)) {
+      target = addFrequencyForRule(target, ruleRow.frequency);
+    }
+
+    while (!isAfter(target, endDate)) {
+      if (ruleEnd && isAfter(target, ruleEnd)) break;
+
+      const dStr = format(target, "yyyy-MM-dd");
+      const key = `${ruleRow.id}|${dStr}`;
+      if (!coveredByGeneratedTx.has(key)) {
+        total += Math.abs(Number(ruleRow.amount));
+      }
+      target = addFrequencyForRule(target, ruleRow.frequency);
+    }
+  }
+
+  return finiteNumber(total);
+}
+
 /**
  * Resultado operacional realizado no mês (receitas − despesas), mesma regra do dashboard.
  */
@@ -583,7 +675,11 @@ export type NextMonthForecast = {
   /** Mês “de onde vem a sobra”: o mês civil anterior ao próximo (= mês atual da referência). */
   mesBaseLabel: string;
   receitaPrevista: number;
-  /** Soma com vencimento (due_date) ou à vista com data no mês. */
+  /** Transações com vencimento no mês ou à vista com data no mês. */
+  compromissosTransacoesMes: number;
+  /** Recorrências ativas com data prevista no mês e sem lançamento já gerado. */
+  compromissosRecorrenciasMes: number;
+  /** compromissosTransacoesMes + compromissosRecorrenciasMes */
   despesaCompromissosMes: number;
   despesaMedia3m: number;
   /** Despesa usada no cálculo (compromissos do próximo mês ou média 3m). */
@@ -604,7 +700,8 @@ export type NextMonthForecast = {
 
 /**
  * Estimativa para o próximo mês civil: receita (distribuição ou média 3m)
- * menos **compromissos daquele mês** (due_date no mês + à vista com data no mês).
+ * menos **compromissos daquele mês**: transações (due_date no mês + à vista com data no mês)
+ * mais **recorrências** com ocorrência projetada no mês que ainda não geraram lançamento.
  * Se não houver nenhum compromisso identificado, usa a média de despesas dos 3 meses anteriores.
  */
 export async function computeNextMonthForecast(
@@ -635,13 +732,15 @@ export async function computeNextMonthForecast(
   }
   const despesaMedia3m = sumDesp / 3;
 
-  const despesaCompromissosMes = await totalDespesasCompromissosNoMes(supabase, orgId, nextMonth);
+  const compromissosTransacoesMes = finiteNumber(await totalDespesasCompromissosNoMes(supabase, orgId, nextMonth));
+  const compromissosRecorrenciasMes = finiteNumber(await totalRecurringExpenseProjectedInMonth(supabase, orgId, nextMonth));
+  const despesaCompromissosMes = finiteNumber(compromissosTransacoesMes + compromissosRecorrenciasMes);
   const temCompromissos = despesaCompromissosMes > 0;
   const despesaProjetada = finiteNumber(temCompromissos ? despesaCompromissosMes : despesaMedia3m);
 
   receitaPrevista = finiteNumber(receitaPrevista);
   const despesaMedia3mF = finiteNumber(despesaMedia3m);
-  const despesaCompromissosF = finiteNumber(despesaCompromissosMes);
+  const despesaCompromissosF = despesaCompromissosMes;
 
   const { resultado: resultadoMesBase } = await resultadoOperacionalMesRealizado(supabase, orgId, mesBase);
   const fluxoProximoMes = finiteNumber(receitaPrevista - despesaProjetada);
@@ -651,6 +750,8 @@ export async function computeNextMonthForecast(
     monthLabel,
     mesBaseLabel,
     receitaPrevista,
+    compromissosTransacoesMes,
+    compromissosRecorrenciasMes,
     despesaCompromissosMes: despesaCompromissosF,
     despesaMedia3m: despesaMedia3mF,
     despesaProjetada,

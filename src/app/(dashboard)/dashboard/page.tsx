@@ -382,6 +382,8 @@ export default async function DashboardPage({
       monthLabel: new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric" }).format(nm),
       mesBaseLabel: new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric" }).format(startOfMonth(now)),
       receitaPrevista: 0,
+      compromissosTransacoesMes: 0,
+      compromissosRecorrenciasMes: 0,
       despesaCompromissosMes: 0,
       despesaMedia3m: 0,
       despesaProjetada: 0,

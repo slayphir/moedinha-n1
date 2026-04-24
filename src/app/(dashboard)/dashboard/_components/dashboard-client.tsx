@@ -106,6 +106,8 @@ type DashboardClientProps = {
     monthLabel: string;
     mesBaseLabel: string;
     receitaPrevista: number;
+    compromissosTransacoesMes: number;
+    compromissosRecorrenciasMes: number;
     despesaCompromissosMes: number;
     despesaMedia3m: number;
     despesaProjetada: number;
@@ -453,7 +455,16 @@ export function DashboardClient({
                 <br />
                 <span className="text-ink/65">Despesa projetada:</span> {formatCurrency(nextMonthForecast.despesaProjetada)}
                 {nextMonthForecast.expenseBasis === "compromissos_mes" ? (
-                  <span className="text-ink/45"> — venc./mês (fatura e à vista na data)</span>
+                  <span className="text-ink/45">
+                    {" "}
+                    — lançamentos {formatCurrency(nextMonthForecast.compromissosTransacoesMes)}
+                    {nextMonthForecast.compromissosRecorrenciasMes > 0 ? (
+                      <>
+                        {" "}
+                        + recorrências {formatCurrency(nextMonthForecast.compromissosRecorrenciasMes)}
+                      </>
+                    ) : null}
+                  </span>
                 ) : (
                   <span className="text-ink/45"> — média 3 meses</span>
                 )}
